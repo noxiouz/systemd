@@ -189,6 +189,12 @@ varlinkctl call /run/systemd/io.systemd.Manager io.systemd.Manager.Describe '{}'
 varlinkctl info /run/systemd/netif/io.systemd.Network
 varlinkctl introspect /run/systemd/netif/io.systemd.Network io.systemd.Network
 varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.Describe '{}'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{}'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{ "ifPatterns": ["l*"]}'| jq -e '(.Interfaces | length == 1) and (.Interfaces[0].Index = 1)'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{ "ifIndices": [1]}'    | jq -e '(.Interfaces | length == 1)'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{ "ifPatterns": ["lo"], "ifIndices": [1]}' | jq -e '(.Interfaces | length == 1)'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{ "ifIndices": [2]}'    | jq -e '(.Interfaces | length == 0) and (.NonMatchedPatterns | length = 1)'
+varlinkctl call /run/systemd/netif/io.systemd.Network io.systemd.Network.GetInterfaces '{ "ifPatterns": ["l"]}' | jq -e '(.Interfaces | length == 0) and (.NonMatchedPatterns | length = 1)'
 
 # test io.systemd.Unit
 varlinkctl info /run/systemd/io.systemd.Manager

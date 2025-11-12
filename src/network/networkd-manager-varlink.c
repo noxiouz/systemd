@@ -3,13 +3,18 @@
 #include <unistd.h>
 
 #include "sd-event.h"
+#include "sd-json.h"
 #include "sd-varlink.h"
 
+#include "alloc-util.h"
 #include "bus-polkit.h"
 #include "fd-util.h"
 #include "hashmap.h"
+#include "glob-util.h"
 #include "json-util.h"
 #include "lldp-rx-internal.h"
+#include "log.h"
+#include "macro-fundamental.h"
 #include "network-util.h"
 #include "networkd-dhcp-server.h"
 #include "networkd-json.h"
@@ -17,6 +22,7 @@
 #include "networkd-manager.h"
 #include "networkd-manager-varlink.h"
 #include "stat-util.h"
+#include "strv.h"
 #include "varlink-io.systemd.Network.h"
 #include "varlink-io.systemd.service.h"
 #include "varlink-util.h"
@@ -38,6 +44,151 @@ static int vl_method_describe(sd_varlink *link, sd_json_variant *parameters, sd_
                 return log_error_errno(r, "Failed to format JSON data: %m");
 
         return sd_varlink_reply(link, v);
+}
+
+typedef struct GetInterfacesParams {
+        int *ifinndices;
+        int n_ifindices;
+        char **ifpatterns;
+} GetInterfacesParams;
+
+static void if_matching_params_free(GetInterfacesParams *p) {
+        assert(p);
+
+        free(p->ifinndices);
+        strv_free(p->ifpatterns);
+}
+
+static int json_dispatch_ifindices(const char *name, sd_json_variant *variant, sd_json_dispatch_flags_t flags, void *userdata) {
+        GetInterfacesParams *params = ASSERT_PTR(userdata);
+        _cleanup_free_ int *netif = NULL;
+        size_t n_netif, k = 0;
+        int r;
+
+        if (!sd_json_variant_is_array(variant))
+                return json_log(variant, flags, SYNTHETIC_ERRNO(EINVAL), "JSON field '%s' is not an array.", strna(name));
+
+        n_netif = sd_json_variant_elements(variant);
+
+        netif = new0(int, n_netif);
+        if (!netif)
+                return json_log_oom(variant, flags);
+
+        sd_json_variant *i;
+        JSON_VARIANT_ARRAY_FOREACH(i, variant) {
+                int if_idx;
+                r = json_dispatch_ifindex(name, i, flags, &if_idx);
+                if (r < 0)
+                        return r;
+
+                netif[k++] = if_idx;
+        }
+
+        assert(k == n_netif);
+        params->n_ifindices = n_netif;
+
+        return free_and_replace(params->ifinndices, netif);
+}
+
+static int vl_method_get_interfaces(sd_varlink *vl, sd_json_variant *parameters, sd_varlink_method_flags_t flags, void *userdata) {
+        static const sd_json_dispatch_field dispatch_table[] = {
+                { "ifIndices",  SD_JSON_VARIANT_ARRAY, json_dispatch_ifindices, 0,                                       SD_JSON_RELAX },
+                { "ifPatterns", SD_JSON_VARIANT_ARRAY, sd_json_dispatch_strv, offsetof(GetInterfacesParams, ifpatterns), SD_JSON_RELAX },
+                {}
+        };
+
+        _cleanup_(sd_json_variant_unrefp) sd_json_variant *matched_interfaces = NULL;
+        _cleanup_(sd_json_variant_unrefp) sd_json_variant *non_matched_indices = NULL;
+        _cleanup_(sd_json_variant_unrefp) sd_json_variant *non_matched_patterns = NULL;
+        _cleanup_free_ Link **links = NULL;
+        size_t n_links;
+        _cleanup_(if_matching_params_free) GetInterfacesParams params = {};
+        Manager *m = ASSERT_PTR(userdata);
+        int r;
+
+        assert(vl);
+
+        r = sd_varlink_dispatch(vl, parameters, dispatch_table, &params);
+        if (r != 0)
+                return r;
+
+        if (strv_isempty(params.ifpatterns) && (params.n_ifindices == 0)) {
+                /* fastpath for no filters, just dump everything */
+                r = hashmap_dump_sorted(m->links_by_index, (void***) &links, &n_links);
+                if (r < 0)
+                        return r;
+        } else {
+                _cleanup_hashmap_free_ Hashmap *picked_links_by_index = NULL;
+                Link *link;
+
+
+                FOREACH_ARRAY(ifindex, params.ifinndices, params.n_ifindices) {
+                        link = hashmap_get(m->links_by_index, INT_TO_PTR(*ifindex));
+                        if (link)
+                                hashmap_ensure_put(&picked_links_by_index, NULL, INT_TO_PTR(*ifindex), link);
+                        else {
+                                r = sd_json_variant_append_arrayb(&non_matched_indices, SD_JSON_BUILD_INTEGER(*ifindex));
+                                if (r < 0)
+                                        return r;
+                        }
+                }
+
+                if (!strv_isempty(params.ifpatterns)) {
+                        _cleanup_free_ bool *matched_patterns = NULL;
+                        matched_patterns = new0(bool, strv_length(params.ifpatterns));
+                        if (!matched_patterns) {
+                                return log_oom();
+                        }
+
+                        HASHMAP_FOREACH(link, m->links_by_index) {
+                                size_t pos;
+                                bool matched = strv_fnmatch_full(params.ifpatterns, link->ifname, 0, &pos);
+                                if (!matched)
+                                        STRV_FOREACH(n, link->alternative_names) {
+                                               if (strv_fnmatch_full(params.ifpatterns, *n, 0, &pos)) {
+                                                        matched = true;
+                                                        break;
+                                               }
+                                        }
+                                if (matched) {
+                                        hashmap_ensure_put(&picked_links_by_index, NULL, INT_TO_PTR(link->ifindex), link);
+                                        matched_patterns[pos] = true;
+                                }
+                        }
+
+                        for (size_t pos = 0; pos < strv_length(params.ifpatterns); pos++) {
+                                if (matched_patterns[pos] || string_is_glob(params.ifpatterns[pos]))
+                                        continue;
+
+                                r = sd_json_variant_append_arrayb(&non_matched_patterns, SD_JSON_BUILD_STRING(params.ifpatterns[pos]));
+                                if (r < 0)
+                                        return r;
+                        }
+                }
+
+                r = hashmap_dump_sorted(picked_links_by_index, (void***) &links, &n_links);
+                if (r < 0)
+                        return r;
+        }
+
+        FOREACH_ARRAY(link, links, n_links) {
+                _cleanup_(sd_json_variant_unrefp) sd_json_variant *e = NULL;
+
+                r = link_build_json(*link, &e);
+                if (r < 0)
+                        return r;
+
+                r = sd_json_variant_append_array(&matched_interfaces, e);
+                if (r < 0)
+                        return r;
+        }
+
+        return sd_varlink_replybo(
+                        vl,
+                        SD_JSON_BUILD_PAIR_CONDITION(!sd_json_variant_is_blank_array(matched_interfaces), "Interfaces", SD_JSON_BUILD_VARIANT(matched_interfaces)),
+                        SD_JSON_BUILD_PAIR_CONDITION(sd_json_variant_is_blank_array(matched_interfaces), "Interfaces", SD_JSON_BUILD_EMPTY_ARRAY),
+                        SD_JSON_BUILD_PAIR_CONDITION(!sd_json_variant_is_blank_array(non_matched_indices), "NonMatchedIndices", SD_JSON_BUILD_VARIANT(non_matched_indices)),
+                        SD_JSON_BUILD_PAIR_CONDITION(!sd_json_variant_is_blank_array(non_matched_patterns), "NonMatchedPatterns", SD_JSON_BUILD_VARIANT(non_matched_patterns)));
 }
 
 static int vl_method_get_states(sd_varlink *link, sd_json_variant *parameters, sd_varlink_method_flags_t flags, void *userdata) {
@@ -309,6 +460,7 @@ int manager_connect_varlink(Manager *m, int fd) {
         r = sd_varlink_server_bind_method_many(
                         s,
                         "io.systemd.Network.Describe",             vl_method_describe,
+                        "io.systemd.Network.GetInterfaces",        vl_method_get_interfaces,
                         "io.systemd.Network.GetStates",            vl_method_get_states,
                         "io.systemd.Network.GetNamespaceId",       vl_method_get_namespace_id,
                         "io.systemd.Network.GetLLDPNeighbors",     vl_method_get_lldp_neighbors,

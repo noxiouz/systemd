@@ -604,12 +604,26 @@ static SD_VARLINK_DEFINE_METHOD(
                 SD_VARLINK_FIELD_COMMENT("Whether persistent storage is ready and writable"),
                 SD_VARLINK_DEFINE_INPUT(Ready, SD_VARLINK_BOOL, 0));
 
+static SD_VARLINK_DEFINE_METHOD(
+                GetInterfaces,
+                SD_VARLINK_FIELD_COMMENT("Interface indices to match"),
+                SD_VARLINK_DEFINE_INPUT(IfIndices, SD_VARLINK_INT, SD_VARLINK_ARRAY|SD_VARLINK_NULLABLE),
+                SD_VARLINK_FIELD_COMMENT("Patterns to match interfaces by name or alternative name. Supports filename patterns"),
+                SD_VARLINK_DEFINE_INPUT(IfPatterns, SD_VARLINK_STRING, SD_VARLINK_ARRAY|SD_VARLINK_NULLABLE),
+                SD_VARLINK_FIELD_COMMENT("Matched interfaces"),
+                SD_VARLINK_DEFINE_OUTPUT_BY_TYPE(Interfaces, Interface, SD_VARLINK_ARRAY),
+                SD_VARLINK_FIELD_COMMENT("Interface indices that don't exist"),
+                SD_VARLINK_DEFINE_OUTPUT(NonMatchedIndices, SD_VARLINK_INT, SD_VARLINK_NULLABLE|SD_VARLINK_ARRAY),
+                SD_VARLINK_FIELD_COMMENT("Non-glob patterns that don't match any interface"),
+                SD_VARLINK_DEFINE_OUTPUT(NonMatchedPatterns, SD_VARLINK_STRING, SD_VARLINK_NULLABLE|SD_VARLINK_ARRAY));
+
 static SD_VARLINK_DEFINE_ERROR(StorageReadOnly);
 
 SD_VARLINK_DEFINE_INTERFACE(
                 io_systemd_Network,
                 "io.systemd.Network",
                 &vl_method_Describe,
+                &vl_method_GetInterfaces,
                 &vl_method_GetStates,
                 &vl_method_GetNamespaceId,
                 &vl_method_GetLLDPNeighbors,
