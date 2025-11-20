@@ -12,6 +12,7 @@
 #include "lldp-rx-internal.h"
 #include "network-util.h"
 #include "networkd-dhcp-server.h"
+#include "networkd-dhcp-server-varlink.h"
 #include "networkd-json.h"
 #include "networkd-link.h"
 #include "networkd-manager.h"
@@ -312,6 +313,7 @@ int manager_varlink_init(Manager *m, int fd) {
                         "io.systemd.Network.GetStates",            vl_method_get_states,
                         "io.systemd.Network.GetNamespaceId",       vl_method_get_namespace_id,
                         "io.systemd.Network.GetLLDPNeighbors",     vl_method_get_lldp_neighbors,
+                        "io.systemd.Network.GetDHCPServerLeases",  vl_method_get_dhcp_server_leases,
                         "io.systemd.Network.SetPersistentStorage", vl_method_set_persistent_storage,
                         "io.systemd.service.Ping",                 varlink_method_ping,
                         "io.systemd.service.SetLogLevel",          varlink_method_set_log_level,
