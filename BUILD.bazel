@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""Root BUILD file for systemd."""
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "meson.version",
+    "LICENSE.LGPL2.1",
+])
+
+# Configuration settings for optional features
+config_setting(
+    name = "have_seccomp",
+    define_values = {"HAVE_SECCOMP": "1"},
+)
+
+config_setting(
+    name = "have_selinux",
+    define_values = {"HAVE_SELINUX": "1"},
+)
+
+config_setting(
+    name = "have_apparmor",
+    define_values = {"HAVE_APPARMOR": "1"},
+)
+
+config_setting(
+    name = "have_audit",
+    define_values = {"HAVE_AUDIT": "1"},
+)
+
+config_setting(
+    name = "have_acl",
+    define_values = {"HAVE_ACL": "1"},
+)
+
+config_setting(
+    name = "have_lz4",
+    define_values = {"HAVE_LZ4": "1"},
+)
+
+config_setting(
+    name = "have_xz",
+    define_values = {"HAVE_XZ": "1"},
+)
+
+config_setting(
+    name = "have_zstd",
+    define_values = {"HAVE_ZSTD": "1"},
+)
+
+config_setting(
+    name = "have_gcrypt",
+    define_values = {"HAVE_GCRYPT": "1"},
+)
+
+config_setting(
+    name = "have_openssl",
+    define_values = {"HAVE_OPENSSL": "1"},
+)
+
+config_setting(
+    name = "have_blkid",
+    define_values = {"HAVE_BLKID": "1"},
+)
+
+config_setting(
+    name = "have_libmount",
+    define_values = {"HAVE_LIBMOUNT": "1"},
+)
+
+config_setting(
+    name = "have_elfutils",
+    define_values = {"HAVE_ELFUTILS": "1"},
+)
+
+config_setting(
+    name = "have_libcryptsetup",
+    define_values = {"HAVE_LIBCRYPTSETUP": "1"},
+)
+
+config_setting(
+    name = "have_p11kit",
+    define_values = {"HAVE_P11KIT": "1"},
+)
+
+config_setting(
+    name = "have_libfido2",
+    define_values = {"HAVE_LIBFIDO2": "1"},
+)
+
+config_setting(
+    name = "have_tpm2",
+    define_values = {"HAVE_TPM2": "1"},
+)
+
+config_setting(
+    name = "bpf_framework",
+    define_values = {"BPF_FRAMEWORK": "1"},
+)
+
+# Platform-specific settings
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
+)

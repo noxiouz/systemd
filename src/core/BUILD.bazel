@@ -1,0 +1,245 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd core - PID 1 service manager."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+load("//bazel/rules:awk.bzl", "awk_codegen")
+load("//bazel/rules:jinja2.bzl", "jinja2_template")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "load-fragment-gperf.gperf.in",
+    "load-fragment-gperf-nulstr.awk",
+])
+
+# ==============================================================================
+# Code Generation: load-fragment gperf
+# ==============================================================================
+
+jinja2_template(
+    name = "load_fragment_gperf_gperf",
+    template = "load-fragment-gperf.gperf.in",
+    out = "load-fragment-gperf.gperf",
+    config_h = "//bazel:config_h_gen",
+)
+
+gperf(
+    name = "load_fragment_gperf_c",
+    src = ":load_fragment_gperf_gperf",
+    out = "load-fragment-gperf.c",
+)
+
+awk_codegen(
+    name = "load_fragment_gperf_nulstr_c",
+    script = "load-fragment-gperf-nulstr.awk",
+    srcs = [":load_fragment_gperf_gperf"],
+    out = "load-fragment-gperf-nulstr.c",
+)
+
+# ==============================================================================
+# BPF delegate configs (stub since BPF_FRAMEWORK=0)
+# ==============================================================================
+
+genrule(
+    name = "bpf_delegate_configs_inc",
+    outs = ["bpf-delegate-configs.inc"],
+    cmd = """cat > $@ << 'EOF'
+/* Stub - BPF_FRAMEWORK disabled */
+/* Generated empty tables for bpf_delegate_* lookups */
+
+static const char* const bpf_delegate_cmd_table[] = {
+};
+
+static const char* const bpf_delegate_map_type_table[] = {
+};
+
+static const char* const bpf_delegate_prog_type_table[] = {
+};
+
+static const char* const bpf_delegate_attach_type_table[] = {
+};
+EOF
+""",
+)
+
+# ==============================================================================
+# Core library sources
+# ==============================================================================
+
+LIBCORE_SRCS = [
+    "audit-fd.c",
+    "automount.c",
+    "bpf-devices.c",
+    "bpf-firewall.c",
+    "bpf-foreign.c",
+    "bpf-restrict-fs.c",
+    "bpf-restrict-ifaces.c",
+    "bpf-socket-bind.c",
+    "bpf-bind-iface.c",
+    "cgroup.c",
+    "dbus-automount.c",
+    "dbus-cgroup.c",
+    "dbus-device.c",
+    "dbus-execute.c",
+    "dbus-job.c",
+    "dbus-kill.c",
+    "dbus-manager.c",
+    "dbus-mount.c",
+    "dbus-path.c",
+    "dbus-scope.c",
+    "dbus-service.c",
+    "dbus-slice.c",
+    "dbus-socket.c",
+    "dbus-swap.c",
+    "dbus-target.c",
+    "dbus-timer.c",
+    "dbus-unit.c",
+    "dbus-util.c",
+    "dbus.c",
+    "device.c",
+    "dynamic-user.c",
+    "emergency-action.c",
+    "exec-credential.c",
+    "execute.c",
+    "execute-serialize.c",
+    "generator-setup.c",
+    "import-creds.c",
+    "job.c",
+    "kill.c",
+    "load-dropin.c",
+    "load-fragment.c",
+    "manager-dump.c",
+    "manager-serialize.c",
+    "manager.c",
+    "mount.c",
+    "namespace.c",
+    "path.c",
+    "scope.c",
+    "selinux-access.c",
+    "service.c",
+    "show-status.c",
+    "slice.c",
+    "socket.c",
+    "swap.c",
+    "taint.c",
+    "target.c",
+    "timer.c",
+    "transaction.c",
+    "unit-dependency-atom.c",
+    "unit-printf.c",
+    "unit-serialize.c",
+    "unit.c",
+    "varlink.c",
+    "varlink-cgroup.c",
+    "varlink-common.c",
+    "varlink-dynamic-user.c",
+    "varlink-execute.c",
+    "varlink-manager.c",
+    "varlink-unit.c",
+]
+
+# ==============================================================================
+# Core static library
+# ==============================================================================
+
+cc_library(
+    name = "core_static",
+    srcs = LIBCORE_SRCS + [
+        ":load_fragment_gperf_c",
+        ":load_fragment_gperf_nulstr_c",
+        ":bpf_delegate_configs_inc",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-fvisibility=default",
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+        "-I$(GENDIR)/src/core",
+    ],
+    includes = ["."],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+        "-lcap",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd (PID 1) binary
+# ==============================================================================
+
+SYSTEMD_SRCS = [
+    "main.c",
+    "crash-handler.c",
+    "clock-warp.c",
+    "kmod-setup.c",
+    "apparmor-setup.c",
+    "ima-setup.c",
+    "ipe-setup.c",
+    "selinux-setup.c",
+    "smack-setup.c",
+    "efi-random.c",
+]
+
+cc_binary(
+    name = "systemd",
+    srcs = SYSTEMD_SRCS,
+    copts = [
+        "-fvisibility=default",
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+        "-lcap",
+    ],
+    deps = [
+        "//bazel:config",
+        ":core_static",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-executor binary
+# ==============================================================================
+
+SYSTEMD_EXECUTOR_SRCS = [
+    "executor.c",
+    "exec-invoke.c",
+]
+
+cc_binary(
+    name = "systemd-executor",
+    srcs = SYSTEMD_EXECUTOR_SRCS,
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+        "-lcap",
+    ],
+    deps = [
+        ":core_static",
+        "//src/shared:shared_static",
+    ],
+)

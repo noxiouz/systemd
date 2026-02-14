@@ -1,0 +1,441 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for shared library - common code for systemd components."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf_capture")
+load("//bazel/rules:codegen.bzl", "generate_gperf_from_list", "python_codegen", "shell_codegen")
+load("//bazel/rules:awk.bzl", "awk_codegen")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "libshared.sym",
+    "generate-ip-protocol-list.sh",
+    "generate-syscall-list.py",
+    "generate-dns_type-gperf.py",
+    "generate-dns_type-list.sed",
+    "ethtool-link-mode.py",
+    "ip-protocol-to-name.awk",
+    "dns_type-to-name.awk",
+])
+
+# ==============================================================================
+# Forward declaration headers (header-only, for breaking circular deps)
+# ==============================================================================
+
+cc_library(
+    name = "shared_forward_hdrs",
+    hdrs = ["shared-forward.h"],
+    includes = ["."],
+    deps = [
+        "//src/libsystemd:systemd_static",  # For sd-forward.h
+    ],
+)
+
+# ==============================================================================
+# Code Generation: IP Protocol list
+# ==============================================================================
+
+shell_codegen(
+    name = "ip_protocol_list_txt",
+    script = "generate-ip-protocol-list.sh",
+    out = "ip-protocol-list.txt",
+)
+
+generate_gperf_from_list(
+    name = "ip_protocol_from_name_gperf",
+    script = "//tools:generate-gperfs.py",
+    list_file = ":ip_protocol_list_txt",
+    out = "ip-protocol-from-name.gperf",
+    name_arg = "ip_protocol",
+    prefix = "IPPROTO_",
+    includes = ["<netinet/in.h>"],
+)
+
+gperf_capture(
+    name = "ip_protocol_from_name_inc",
+    src = ":ip_protocol_from_name_gperf",
+    out = "ip-protocol-from-name.inc",
+    language = "ANSI-C",
+    struct_type = True,
+    ignore_case = True,
+    lookup_function_name = "lookup_ip_protocol",
+    hash_function_name = "hash_ip_protocol_name",
+    pic = True,
+    readonly_tables = True,
+)
+
+awk_codegen(
+    name = "ip_protocol_to_name_inc",
+    script = "ip-protocol-to-name.awk",
+    srcs = [":ip_protocol_list_txt"],
+    out = "ip-protocol-to-name.inc",
+)
+
+# ==============================================================================
+# Code Generation: Syscall list
+# ==============================================================================
+
+python_codegen(
+    name = "syscall_list_inc",
+    script = "generate-syscall-list.py",
+    srcs = ["//src/include/override/sys:syscall-list.txt"],
+    out = "syscall-list.inc",
+    args = [],
+    inputs_as_args = True,
+    capture = True,
+)
+
+# ==============================================================================
+# Code Generation: DNS type list
+# ==============================================================================
+
+genrule(
+    name = "dns_type_list_txt",
+    srcs = ["dns-type.h"],
+    outs = ["dns_type-list.txt"],
+    cmd = "sed -n -r -f $(location generate-dns_type-list.sed) $(location dns-type.h) > $@",
+    tools = ["generate-dns_type-list.sed"],
+)
+
+python_codegen(
+    name = "dns_type_from_name_gperf",
+    script = "generate-dns_type-gperf.py",
+    srcs = [":dns_type_list_txt"],
+    out = "dns_type-from-name.gperf",
+    args = [
+        "dns_type",
+        "DNS_TYPE_",
+    ],
+    inputs_as_args = True,
+    capture = True,
+)
+
+gperf_capture(
+    name = "dns_type_from_name_inc",
+    src = ":dns_type_from_name_gperf",
+    out = "dns_type-from-name.inc",
+    language = "ANSI-C",
+    struct_type = True,
+    ignore_case = True,
+    lookup_function_name = "lookup_dns_type",
+    hash_function_name = "hash_dns_type_name",
+    pic = True,
+    readonly_tables = True,
+)
+
+awk_codegen(
+    name = "dns_type_to_name_inc",
+    script = "dns_type-to-name.awk",
+    srcs = [":dns_type_list_txt"],
+    out = "dns_type-to-name.inc",
+)
+
+# ==============================================================================
+# Code Generation: Ethtool link mode
+# ==============================================================================
+
+python_codegen(
+    name = "ethtool_link_mode_inc",
+    script = "ethtool-link-mode.py",
+    out = "ethtool-link-mode.inc",
+    args = ["--header", "cpp"],
+    capture = True,
+)
+
+# ==============================================================================
+# Shared library sources
+# ==============================================================================
+
+SHARED_SRCS = [
+    "acl-util.c",
+    "acpi-fpdt.c",
+    "apparmor-util.c",
+    "ask-password-agent.c",
+    "ask-password-api.c",
+    "async.c",
+    "barrier.c",
+    "base-filesystem.c",
+    "battery-util.c",
+    "binfmt-util.c",
+    "bitmap.c",
+    "blkid-util.c",
+    "blockdev-list.c",
+    "blockdev-util.c",
+    "bond-util.c",
+    "boot-entry.c",
+    "boot-timestamps.c",
+    "bootspec.c",
+    "bpf-dlopen.c",
+    "bpf-program.c",
+    "bridge-util.c",
+    "btrfs-util.c",
+    "bus-get-properties.c",
+    "bus-locator.c",
+    "bus-log-control-api.c",
+    "bus-map-properties.c",
+    "bus-message-util.c",
+    "bus-object.c",
+    "bus-polkit.c",
+    "bus-print-properties.c",
+    "bus-unit-procs.c",
+    "bus-unit-util.c",
+    "bus-util.c",
+    "bus-wait-for-jobs.c",
+    "bus-wait-for-units.c",
+    "calendarspec.c",
+    "cgroup-setup.c",
+    "cgroup-show.c",
+    "chown-recursive.c",
+    "clean-ipc.c",
+    "clock-util.c",
+    "color-util.c",
+    "common-signal.c",
+    "compare-operator.c",
+    "condition.c",
+    "conf-parser.c",
+    "copy.c",
+    "coredump-util.c",
+    "cpu-set-util.c",
+    "creds-util.c",
+    "cryptsetup-fido2.c",
+    "cryptsetup-tpm2.c",
+    "cryptsetup-util.c",
+    "daemon-util.c",
+    "data-fd-util.c",
+    "dev-setup.c",
+    "discover-image.c",
+    "dissect-image.c",
+    "dm-util.c",
+    "dns-answer.c",
+    "dns-domain.c",
+    "dns-packet.c",
+    "dns-question.c",
+    "dns-rr.c",
+    "dns-type.c",
+    "dropin.c",
+    "edit-util.c",
+    "efi-api.c",
+    "efi-loader.c",
+    "elf-util.c",
+    "enable-mempool.c",
+    "ethtool-util.c",
+    "exec-util.c",
+    "exit-status.c",
+    "extension-util.c",
+    "factory-reset.c",
+    "fdset.c",
+    "fido2-util.c",
+    "find-esp.c",
+    "firewall-util.c",
+    "fork-notify.c",
+    "format-table.c",
+    "fstab-util.c",
+    "generator.c",
+    "geneve-util.c",
+    "gpt.c",
+    "group-record.c",
+    "hibernate-util.c",
+    "hostname-setup.c",
+    "hwdb-util.c",
+    "id128-print.c",
+    "ima-util.c",
+    "image-policy.c",
+    "import-util.c",
+    "in-addr-prefix-util.c",
+    "install-file.c",
+    "install-printf.c",
+    "install.c",
+    "ioprio-util.c",
+    "ip-protocol-list.c",
+    "ipvlan-util.c",
+    "journal-file-util.c",
+    "journal-importer.c",
+    "journal-util.c",
+    "kbd-util.c",
+    "kernel-config.c",
+    "kernel-image.c",
+    "killall.c",
+    "label-util.c",
+    "libarchive-util.c",
+    "libaudit-util.c",
+    "libcrypt-util.c",
+    "libfido2-util.c",
+    "libmount-util.c",
+    "local-addresses.c",
+    "locale-setup.c",
+    "log-assert-critical.c",
+    "logs-show.c",
+    "loop-util.c",
+    "loopback-setup.c",
+    "lsm-util.c",
+    "machine-bind-user.c",
+    "machine-credential.c",
+    "machine-id-setup.c",
+    "macvlan-util.c",
+    "main-func.c",
+    "mkdir-label.c",
+    "mkfs-util.c",
+    "module-util.c",
+    "mount-setup.c",
+    "mount-util.c",
+    "net-condition.c",
+    "netif-naming-scheme.c",
+    "netif-sriov.c",
+    "netif-util.c",
+    "notify-recv.c",
+    "nsflags.c",
+    "nsresource.c",
+    "numa-util.c",
+    "open-file.c",
+    "openssl-util.c",
+    "osc-context.c",
+    "output-mode.c",
+    "pager.c",
+    "parse-argument.c",
+    "parse-helpers.c",
+    "password-quality-util-passwdqc.c",
+    "password-quality-util-pwquality.c",
+    "pcre2-util.c",
+    "pcrextend-util.c",
+    "pe-binary.c",
+    "pkcs11-util.c",
+    "plymouth-util.c",
+    "polkit-agent.c",
+    "portable-util.c",
+    "pretty-print.c",
+    "printk-util.c",
+    "prompt-util.c",
+    "ptyfwd.c",
+    "qrcode-util.c",
+    "quota-util.c",
+    "reboot-util.c",
+    "recovery-key.c",
+    "reread-partition-table.c",
+    "resize-fs.c",
+    "resolve-hook-util.c",
+    "resolve-util.c",
+    "rm-rf.c",
+    "seccomp-util.c",
+    "securebits-util.c",
+    "selinux-util.c",
+    "serialize.c",
+    "service-util.c",
+    "shift-uid.c",
+    "sleep-config.c",
+    "smack-util.c",
+    "smbios11.c",
+    "socket-label.c",
+    "socket-netlink.c",
+    "specifier.c",
+    "switch-root.c",
+    "tar-util.c",
+    "tmpfile-util-label.c",
+    "tomoyo-util.c",
+    "tpm2-util.c",
+    "tpm2-event-log.c",
+    "udev-util.c",
+    "unit-file.c",
+    "user-record-nss.c",
+    "user-record-show.c",
+    "user-record.c",
+    "userdb-dropin.c",
+    "userdb.c",
+    "varlink-idl-common.c",
+    "varlink-io.systemd.AskPassword.c",
+    "varlink-io.systemd.BootControl.c",
+    "varlink-io.systemd.Credentials.c",
+    "varlink-io.systemd.FactoryReset.c",
+    "varlink-io.systemd.Hostname.c",
+    "varlink-io.systemd.Import.c",
+    "varlink-io.systemd.Journal.c",
+    "varlink-io.systemd.Login.c",
+    "varlink-io.systemd.Machine.c",
+    "varlink-io.systemd.MachineImage.c",
+    "varlink-io.systemd.ManagedOOM.c",
+    "varlink-io.systemd.Manager.c",
+    "varlink-io.systemd.MountFileSystem.c",
+    "varlink-io.systemd.MuteConsole.c",
+    "varlink-io.systemd.NamespaceResource.c",
+    "varlink-io.systemd.Network.c",
+    "varlink-io.systemd.PCRExtend.c",
+    "varlink-io.systemd.PCRLock.c",
+    "varlink-io.systemd.Repart.c",
+    "varlink-io.systemd.Resolve.c",
+    "varlink-io.systemd.Resolve.Hook.c",
+    "varlink-io.systemd.Resolve.Monitor.c",
+    "varlink-io.systemd.Udev.c",
+    "varlink-io.systemd.Unit.c",
+    "varlink-io.systemd.UserDatabase.c",
+    "varlink-io.systemd.oom.c",
+    "varlink-io.systemd.service.c",
+    "varlink-io.systemd.sysext.c",
+    "varlink-serialize.c",
+    "vconsole-util.c",
+    "verb-log-control.c",
+    "verbs.c",
+    "vlan-util.c",
+    "volatile-util.c",
+    "vpick.c",
+    "wall.c",
+    "watchdog.c",
+    "web-util.c",
+    "wifi-util.c",
+    "xml.c",
+    # Test support
+    "tests.c",
+]
+
+# ==============================================================================
+# Static library for internal use
+# ==============================================================================
+
+cc_library(
+    name = "shared_static",
+    srcs = SHARED_SRCS + [
+        ":dns_type_from_name_inc",
+        ":dns_type_to_name_inc",
+        ":ethtool_link_mode_inc",
+        ":ip_protocol_from_name_inc",
+        ":ip_protocol_to_name_inc",
+        ":syscall_list_inc",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-fvisibility=default",
+        # Standard defines for Linux
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        # Include config.h for all source files
+        "-include", "$(GENDIR)/bazel/config.h",
+        # Include paths for generated headers
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/basic",
+        "//src/include",
+        "//src/libc:libc_wrapper",
+        "//src/libsystemd:systemd_static",
+        # Hermetic third-party dependencies
+        "@util-linux//:libblkid",
+        "@util-linux//:libmount",
+        "@kmod//:libkmod",
+    ],
+)
+
+# Alias for linking
+alias(
+    name = "shared",
+    actual = ":shared_static",
+)

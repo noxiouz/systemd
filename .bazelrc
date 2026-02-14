@@ -1,0 +1,152 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+# Build configuration for systemd
+
+# Common C compiler flags matching meson build
+build --copt=-std=gnu17
+build --copt=-fvisibility=hidden
+build --copt=-fno-strict-aliasing
+build --copt=-ffunction-sections
+build --copt=-fdata-sections
+
+# Warning flags
+build --copt=-Wall
+build --copt=-Wextra
+build --copt=-Wno-missing-field-initializers
+build --copt=-Wno-unused-parameter
+
+# Error flags matching meson build
+build --copt=-Werror=return-type
+build --copt=-Werror=implicit-function-declaration
+build --copt=-Werror=format=2
+build --copt=-Werror=missing-prototypes
+build --copt=-Werror=pointer-sign
+
+# Linker flags
+build --linkopt=-Wl,--gc-sections
+build --linkopt=-Wl,--as-needed
+
+# Platform configuration
+build --host_copt=-D_GNU_SOURCE
+build --copt=-D_GNU_SOURCE
+build --copt=-D__SANE_USERSPACE_TYPES__
+build --copt=-D_LARGEFILE64_SOURCE
+build --copt=-D_FILE_OFFSET_BITS=64
+
+# Source path for PROJECT_FILE macro
+build --copt=-DRELATIVE_SOURCE_PATH=\"src\"
+
+# Critical config values that must be defined early (from config.h)
+build --copt=-DSIZEOF_TIME_T=8
+build --copt=-DSIZEOF_TIMEX_MEMBER=8
+build --copt=-DSIZEOF_RLIM_T=8
+build --copt=-DSIZEOF_DEV_T=8
+build --copt=-DSIZEOF_INO_T=8
+build --copt=-DSIZEOF_PID_T=4
+build --copt=-DSIZEOF_UID_T=4
+build --copt=-DSIZEOF_GID_T=4
+build --copt=-DGPERF_LEN_TYPE=size_t
+build --copt=-DTTY_MODE=0600
+build --copt=-DBUILD_MODE_DEVELOPER=0
+build --copt=-DLOG_MESSAGE_VERIFICATION=0
+build --copt=-DFUZZ_USE_SIZE_LIMIT=0
+build --copt=-DHAVE_GENERIC=1
+build --copt=-DHAVE_TYPEOF=1
+build --copt=-DDEFAULT_COMPRESSION=COMPRESSION_NONE
+build --copt=-DHAVE_XZ=0
+build --copt=-DHAVE_LZ4=0
+build --copt=-DHAVE_ZSTD=0
+build --copt=-DHAVE_BZIP2=0
+build --copt=-DHAVE_COMPRESSION=0
+build --copt=-DHAVE_GCRYPT=0
+build --copt=-DHAVE_OPENSSL=0
+build --copt=-DHAVE_SECCOMP=0
+build --copt=-DHAVE_SELINUX=0
+build --copt=-DHAVE_APPARMOR=0
+build --copt=-DHAVE_SMACK=0
+build --copt=-DHAVE_AUDIT=0
+build --copt=-DHAVE_ACL=0
+build --copt=-DHAVE_LIBCAP=0
+build --copt=-DHAVE_BLKID=1
+build --copt=-DHAVE_LIBMOUNT=1
+build --copt=-DHAVE_KMOD=1
+build --copt=-DBPF_FRAMEWORK=0
+build --copt=-DHAVE_LIBBPF=0
+build --copt=-DHAVE_PAM=0
+build --copt=-DHAVE_PWQUALITY=0
+build --copt=-DHAVE_PASSWDQC=0
+build --copt=-DHAVE_TPM2=0
+build --copt=-DHAVE_P11KIT=0
+build --copt=-DHAVE_LIBFIDO2=0
+build --copt=-DHAVE_LIBCRYPTSETUP=0
+build --copt=-DHAVE_PCRE2=0
+build --copt=-DHAVE_ELFUTILS=0
+build --copt=-DHAVE_QRENCODE=0
+build --copt=-DHAVE_MICROHTTPD=0
+build --copt=-DHAVE_GNUTLS=0
+build --copt=-DHAVE_LIBCURL=0
+build --copt=-DHAVE_LIBIDN=0
+build --copt=-DHAVE_LIBIDN2=0
+build --copt=-DHAVE_LIBIPTC=0
+build --copt=-DHAVE_DBUS=0
+build --copt=-DHAVE_XKBCOMMON=0
+build --copt=-DHAVE_LIBFDISK=0
+build --copt=-DENABLE_EFI=0
+build --copt=-DSD_BOOT=0
+build --copt=-DENABLE_URLIFY=1
+build --copt=-DENABLE_FEXECVE=1
+build --copt=-DGETTEXT_PACKAGE=\"systemd\"
+build --copt=-DHAVE_SPLIT_BIN=0
+# Feature configuration (default: minimal set)
+build --define=HAVE_SECCOMP=0
+build --define=HAVE_SELINUX=0
+build --define=HAVE_APPARMOR=0
+build --define=HAVE_SMACK=0
+build --define=HAVE_AUDIT=0
+build --define=HAVE_ACL=0
+build --define=HAVE_LZ4=0
+build --define=HAVE_XZ=0
+build --define=HAVE_ZSTD=0
+build --define=HAVE_GCRYPT=0
+build --define=HAVE_OPENSSL=0
+build --define=HAVE_QRENCODE=0
+build --define=HAVE_MICROHTTPD=0
+build --define=HAVE_GNUTLS=0
+build --define=HAVE_LIBCURL=0
+build --define=HAVE_LIBIDN=0
+build --define=HAVE_LIBIDN2=0
+build --define=HAVE_LIBIPTC=0
+build --define=HAVE_PCRE2=0
+build --define=HAVE_ELFUTILS=0
+build --define=HAVE_LIBCRYPTSETUP=0
+build --define=HAVE_P11KIT=0
+build --define=HAVE_LIBFIDO2=0
+build --define=HAVE_TPM2=0
+build --define=HAVE_PWQUALITY=0
+build --define=HAVE_PASSWDQC=0
+build --define=HAVE_BLKID=1
+build --define=HAVE_LIBMOUNT=1
+build --define=BPF_FRAMEWORK=0
+
+# Release configuration
+build:release --compilation_mode=opt
+build:release --copt=-O2
+build:release --copt=-DNDEBUG
+
+# Debug configuration
+build:debug --compilation_mode=dbg
+build:debug --copt=-O0
+build:debug --copt=-g3
+
+# Developer configuration (more warnings, sanitizers)
+build:developer --copt=-Werror
+build:developer --copt=-fsanitize=address
+build:developer --linkopt=-fsanitize=address
+
+# Convenience aliases
+build:opt --config=release
+build:dbg --config=debug
+
+# Test configuration
+test --test_output=errors
+test --test_verbose_timeout_warnings

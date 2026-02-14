@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for system header overrides."""
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "syscall-list.txt",
+])
+
+filegroup(
+    name = "override_headers",
+    srcs = glob(["*.h"]),
+)
+
+filegroup(
+    name = "syscall_lists",
+    srcs = glob(["syscalls-*.txt"]),
+)

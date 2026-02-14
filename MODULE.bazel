@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""Bazel module for systemd - System and Service Manager."""
+
+module(
+    name = "systemd",
+    version = "260",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.14")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+
+# Register preinstalled pkgconfig toolchain to avoid building glib from source
+# (glib fails to compile with modern compilers due to C23 bool keyword conflict)
+register_toolchains("@rules_foreign_cc//toolchains:preinstalled_pkgconfig_toolchain")
+
+# External dependencies via http_archive
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# util-linux (provides libblkid, libmount)
+http_archive(
+    name = "util-linux",
+    url = "https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.2.tar.xz",
+    sha256 = "d78b37a66f5922d70edf3bdfb01a6b33d34ed3c3cafd6628203b2a2b67c8e8b3",
+    strip_prefix = "util-linux-2.40.2",
+    build_file = "//third_party:util-linux.BUILD.bazel",
+)
+
+# kmod (provides libkmod)
+http_archive(
+    name = "kmod",
+    url = "https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kmod/kmod-33.tar.xz",
+    sha256 = "dc768b3155172091f56dc69430b5481f2d76ecd9ccb54ead8c2540dbcf5ea9bc",
+    strip_prefix = "kmod-33",
+    build_file = "//third_party:kmod.BUILD.bazel",
+)

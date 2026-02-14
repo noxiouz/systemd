@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for include directory - public headers."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "include",
+    hdrs = glob([
+        "**/*.h",
+    ]),
+    includes = [
+        ".",
+        "override",
+        "override/sys",
+        # UAPI headers for kernel constants not yet in system headers
+        "uapi",
+    ],
+)

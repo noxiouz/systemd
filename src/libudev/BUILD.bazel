@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for libudev - the public udev library."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "libudev.sym",
+    "libudev.h",
+    "libudev.pc.in",
+])
+
+# ==============================================================================
+# Source files
+# ==============================================================================
+
+LIBUDEV_SRCS = [
+    "libudev-device.c",
+    "libudev-enumerate.c",
+    "libudev-hwdb.c",
+    "libudev-list.c",
+    "libudev-monitor.c",
+    "libudev-queue.c",
+    "libudev-util.c",
+    "libudev.c",
+]
+
+# ==============================================================================
+# Static library for internal use
+# ==============================================================================
+
+cc_library(
+    name = "udev_basic",
+    srcs = LIBUDEV_SRCS,
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-fvisibility=default",
+        # Standard defines for Linux
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        # Include config.h for all source files
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/libsystemd:systemd_static",
+        "//src/shared:shared_forward_hdrs",
+    ],
+)
+
+# ==============================================================================
+# Shared library (libudev.so)
+# ==============================================================================
+
+cc_shared_library(
+    name = "udev",
+    additional_linker_inputs = ["libudev.sym"],
+    exports_filter = [
+        "//src/libudev:udev_basic",
+        "//src/libsystemd:systemd_static",
+        "//src/basic:basic",
+    ],
+    shared_lib_name = "libudev.so.1",
+    user_link_flags = [
+        "-Wl,--version-script=$(location libudev.sym)",
+        "-Wl,-soname,libudev.so.1",
+    ],
+    deps = [
+        ":udev_basic",
+    ],
+)
+
+# Alias for convenience
+alias(
+    name = "libudev",
+    actual = ":udev",
+)

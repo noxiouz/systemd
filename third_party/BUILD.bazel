@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for third-party dependencies."""
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "util-linux.BUILD.bazel",
+    "kmod.BUILD.bazel",
+])

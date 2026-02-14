@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for journal - journald daemon and journalctl CLI."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "journald-gperf.gperf",
+])
+
+# ==============================================================================
+# Code Generation: journald gperf
+# ==============================================================================
+
+gperf(
+    name = "journald_gperf_c",
+    src = "journald-gperf.gperf",
+    out = "journald-gperf.c",
+)
+
+# ==============================================================================
+# systemd-journald daemon sources
+# ==============================================================================
+
+JOURNALD_SRCS = [
+    "journald.c",
+]
+
+JOURNALD_EXTRACT_SRCS = [
+    "journald-audit.c",
+    "journald-client.c",
+    "journald-config.c",
+    "journald-console.c",
+    "journald-context.c",
+    "journald-kmsg.c",
+    "journald-manager.c",
+    "journald-native.c",
+    "journald-rate-limit.c",
+    "journald-socket.c",
+    "journald-stream.c",
+    "journald-sync.c",
+    "journald-syslog.c",
+    "journald-varlink.c",
+    "journald-wall.c",
+    "fuzz-journald-util.c",
+]
+
+cc_library(
+    name = "journald_lib",
+    srcs = JOURNALD_EXTRACT_SRCS + [
+        ":journald_gperf_c",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-fvisibility=default",
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+cc_binary(
+    name = "systemd-journald",
+    srcs = JOURNALD_SRCS,
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+        "-lcap",
+    ],
+    deps = [
+        ":journald_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# journalctl CLI
+# ==============================================================================
+
+JOURNALCTL_SRCS = [
+    "journalctl.c",
+    "journalctl-authenticate.c",
+    "journalctl-catalog.c",
+    "journalctl-filter.c",
+    "journalctl-misc.c",
+    "journalctl-show.c",
+    "journalctl-util.c",
+    "journalctl-varlink.c",
+]
+
+cc_binary(
+    name = "journalctl",
+    srcs = JOURNALCTL_SRCS + glob(["journalctl*.h"]),
+    copts = [
+        "-fvisibility=default",
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+        "-lcap",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-cat utility
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-cat",
+    srcs = ["cat.c"],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+    ],
+    deps = [
+        ":journald_lib",
+        "//src/shared:shared_static",
+    ],
+)

@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemctl - the systemd control CLI."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# systemctl sources
+# ==============================================================================
+
+SYSTEMCTL_SRCS = [
+    "systemctl-add-dependency.c",
+    "systemctl-cancel-job.c",
+    "systemctl-clean-or-freeze.c",
+    "systemctl-edit.c",
+    "systemctl-enable.c",
+    "systemctl-is-active.c",
+    "systemctl-is-enabled.c",
+    "systemctl-is-system-running.c",
+    "systemctl-kill.c",
+    "systemctl-list-dependencies.c",
+    "systemctl-list-jobs.c",
+    "systemctl-list-machines.c",
+    "systemctl-list-unit-files.c",
+    "systemctl-list-units.c",
+    "systemctl-log-setting.c",
+    "systemctl-main.c",
+    "systemctl-mount.c",
+    "systemctl-preset-all.c",
+    "systemctl-reset-failed.c",
+    "systemctl-service-watchdogs.c",
+    "systemctl-set-default.c",
+    "systemctl-set-environment.c",
+    "systemctl-set-property.c",
+    "systemctl-show.c",
+    "systemctl-start-special.c",
+    "systemctl-switch-root.c",
+    "systemctl-trivial-method.c",
+    "systemctl-whoami.c",
+]
+
+SYSTEMCTL_EXTRACT_SRCS = [
+    "systemctl-compat-halt.c",
+    "systemctl-compat-shutdown.c",
+    "systemctl-daemon-reload.c",
+    "systemctl-logind.c",
+    "systemctl-start-unit.c",
+    "systemctl-util.c",
+    "systemctl.c",
+]
+
+# ==============================================================================
+# systemctl binary
+# ==============================================================================
+
+cc_binary(
+    name = "systemctl",
+    srcs = SYSTEMCTL_SRCS + SYSTEMCTL_EXTRACT_SRCS + glob(["*.h"]),
+    copts = [
+        "-fvisibility=default",
+        # Standard defines for Linux
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        # Include config.h for all source files
+        "-include", "$(GENDIR)/bazel/config.h",
+        # Include paths for generated headers
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    linkopts = [
+        "-ldl",
+        "-lm",
+        "-lrt",
+        "-lpthread",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

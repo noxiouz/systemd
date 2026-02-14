@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for libc wrappers - syscall wrappers for missing glibc functions."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+LIBC_WRAPPER_SRCS = [
+    "bpf.c",
+    "ioprio.c",
+    "kcmp.c",
+    "keyctl.c",
+    "mempolicy.c",
+    "mount.c",
+    "pidfd.c",
+    "quota.c",
+    "sched.c",
+    "signal.c",
+    "stat.c",
+    "unistd.c",
+    "xattr.c",
+]
+
+cc_library(
+    name = "libc_wrapper",
+    srcs = LIBC_WRAPPER_SRCS,
+    hdrs = [
+        "//src/include/override/sys:override_headers",
+    ],
+    copts = [
+        "-fvisibility=default",
+        # These are syscall wrappers that don't need prototypes
+        "-Wno-missing-prototypes",
+        # Include config.h
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = [
+        "../include/override",
+    ],
+    deps = [
+        "//bazel:config",
+    ],
+)

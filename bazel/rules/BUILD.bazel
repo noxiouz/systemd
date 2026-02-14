@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for custom Bazel rules."""
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "gperf.bzl",
+    "codegen.bzl",
+    "awk.bzl",
+    "jinja2.bzl",
+])

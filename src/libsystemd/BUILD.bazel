@@ -1,0 +1,262 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for libsystemd - the public systemd library."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
+load("//bazel/rules:codegen.bzl", "shell_codegen")
+load("//bazel/rules:awk.bzl", "awk_codegen")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "libsystemd.sym",
+    "libsystemd.pc.in",
+])
+
+# ==============================================================================
+# Code Generation: Audit type list
+# ==============================================================================
+
+shell_codegen(
+    name = "audit_type_list_txt",
+    script = "sd-journal/generate-audit_type-list.sh",
+    out = "audit_type-list.txt",
+)
+
+awk_codegen(
+    name = "audit_type_to_name_inc",
+    script = "sd-journal/audit_type-to-name.awk",
+    srcs = [":audit_type_list_txt"],
+    out = "audit_type-to-name.inc",
+)
+
+# ==============================================================================
+# Source file lists by component
+# ==============================================================================
+
+SD_JOURNAL_SRCS = [
+    "sd-journal/audit-type.c",
+    "sd-journal/catalog.c",
+    "sd-journal/fsprg.c",
+    "sd-journal/journal-authenticate.c",
+    "sd-journal/journal-file.c",
+    "sd-journal/journal-send.c",
+    "sd-journal/journal-vacuum.c",
+    "sd-journal/journal-verify.c",
+    "sd-journal/lookup3.c",
+    "sd-journal/mmap-cache.c",
+    "sd-journal/sd-journal.c",
+]
+
+SD_ID128_SRCS = [
+    "sd-id128/id128-util.c",
+    "sd-id128/sd-id128.c",
+]
+
+SD_DAEMON_SRCS = [
+    "sd-daemon/sd-daemon.c",
+]
+
+SD_EVENT_SRCS = [
+    "sd-event/event-util.c",
+    "sd-event/sd-event.c",
+]
+
+SD_BUS_SRCS = [
+    "sd-bus/bus-common-errors.c",
+    "sd-bus/bus-container.c",
+    "sd-bus/bus-control.c",
+    "sd-bus/bus-convenience.c",
+    "sd-bus/bus-creds.c",
+    "sd-bus/bus-dump.c",
+    "sd-bus/bus-dump-json.c",
+    "sd-bus/bus-error.c",
+    "sd-bus/bus-internal.c",
+    "sd-bus/bus-introspect.c",
+    "sd-bus/bus-kernel.c",
+    "sd-bus/bus-match.c",
+    "sd-bus/bus-message.c",
+    "sd-bus/bus-objects.c",
+    "sd-bus/bus-signature.c",
+    "sd-bus/bus-slot.c",
+    "sd-bus/bus-socket.c",
+    "sd-bus/bus-track.c",
+    "sd-bus/bus-type.c",
+    "sd-bus/sd-bus.c",
+]
+
+SD_DEVICE_SRCS = [
+    "sd-device/device-enumerator.c",
+    "sd-device/device-filter.c",
+    "sd-device/device-monitor.c",
+    "sd-device/device-private.c",
+    "sd-device/device-util.c",
+    "sd-device/sd-device.c",
+]
+
+SD_LOGIN_SRCS = [
+    "sd-login/sd-login.c",
+]
+
+SD_JSON_SRCS = [
+    "sd-json/json-util.c",
+    "sd-json/sd-json.c",
+]
+
+SD_VARLINK_SRCS = [
+    "sd-varlink/sd-varlink.c",
+    "sd-varlink/sd-varlink-idl.c",
+    "sd-varlink/varlink-io.systemd.c",
+    "sd-varlink/varlink-org.varlink.service.c",
+    "sd-varlink/varlink-util.c",
+]
+
+SD_PATH_SRCS = [
+    "sd-path/path-lookup.c",
+    "sd-path/sd-path.c",
+]
+
+SD_NETLINK_SRCS = [
+    "sd-netlink/netlink-genl.c",
+    "sd-netlink/netlink-message-nfnl.c",
+    "sd-netlink/netlink-message-rtnl.c",
+    "sd-netlink/netlink-message.c",
+    "sd-netlink/netlink-slot.c",
+    "sd-netlink/netlink-sock-diag.c",
+    "sd-netlink/netlink-socket.c",
+    "sd-netlink/netlink-types-genl.c",
+    "sd-netlink/netlink-types-nfnl.c",
+    "sd-netlink/netlink-types-rtnl.c",
+    "sd-netlink/netlink-types-sdnl.c",
+    "sd-netlink/netlink-types.c",
+    "sd-netlink/netlink-util.c",
+    "sd-netlink/sd-netlink.c",
+]
+
+SD_NETWORK_SRCS = [
+    "sd-network/network-util.c",
+    "sd-network/sd-network.c",
+]
+
+SD_HWDB_SRCS = [
+    "sd-hwdb/sd-hwdb.c",
+]
+
+SD_RESOLVE_SRCS = [
+    "sd-resolve/sd-resolve.c",
+]
+
+ALL_LIBSYSTEMD_SRCS = (
+    SD_JOURNAL_SRCS +
+    SD_ID128_SRCS +
+    SD_DAEMON_SRCS +
+    SD_EVENT_SRCS +
+    SD_BUS_SRCS +
+    SD_DEVICE_SRCS +
+    SD_LOGIN_SRCS +
+    SD_JSON_SRCS +
+    SD_VARLINK_SRCS +
+    SD_PATH_SRCS +
+    SD_NETLINK_SRCS +
+    SD_NETWORK_SRCS +
+    SD_HWDB_SRCS +
+    SD_RESOLVE_SRCS
+)
+
+# ==============================================================================
+# Static library for internal use
+# ==============================================================================
+
+cc_library(
+    name = "systemd_static",
+    srcs = ALL_LIBSYSTEMD_SRCS + [
+        ":audit_type_to_name_inc",
+    ],
+    hdrs = glob(
+        [
+            "sd-bus/*.h",
+            "sd-common/*.h",
+            "sd-device/*.h",
+            "sd-event/*.h",
+            "sd-hwdb/*.h",
+            "sd-id128/*.h",
+            "sd-journal/*.h",
+            "sd-json/*.h",
+            "sd-netlink/*.h",
+            "sd-network/*.h",
+            "sd-path/*.h",
+            "sd-resolve/*.h",
+            "sd-varlink/*.h",
+        ],
+        allow_empty = False,
+    ) + [
+        "//src/version:version_h",
+    ],
+    copts = [
+        "-fvisibility=default",
+        # Standard defines for Linux
+        "-D_GNU_SOURCE",
+        "-D__SANE_USERSPACE_TYPES__",
+        "-D_LARGEFILE64_SOURCE",
+        "-D_FILE_OFFSET_BITS=64",
+        # Include config.h for all source files
+        "-include", "$(GENDIR)/bazel/config.h",
+        # Include paths for generated headers
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = [
+        ".",
+        "sd-bus",
+        "sd-common",
+        "sd-device",
+        "sd-event",
+        "sd-hwdb",
+        "sd-id128",
+        "sd-journal",
+        "sd-json",
+        "sd-netlink",
+        "sd-network",
+        "sd-path",
+        "sd-resolve",
+        "sd-varlink",
+    ],
+    linkopts = [
+        "-lrt",
+        "-lpthread",
+        "-lm",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/basic",
+        "//src/include",
+        "//src/libc:libc_wrapper",
+    ],
+)
+
+# ==============================================================================
+# Shared library (libsystemd.so)
+# ==============================================================================
+
+cc_shared_library(
+    name = "systemd",
+    additional_linker_inputs = ["libsystemd.sym"],
+    exports_filter = [
+        "//src/libsystemd:systemd_static",
+        "//src/basic:basic",
+    ],
+    shared_lib_name = "libsystemd.so.0",
+    user_link_flags = [
+        "-Wl,--version-script=$(location libsystemd.sym)",
+        "-Wl,-z,nodelete",
+        "-Wl,-soname,libsystemd.so.0",
+    ],
+    deps = [
+        ":systemd_static",
+    ],
+)
+
+# Alias for convenience
+alias(
+    name = "libsystemd",
+    actual = ":systemd",
+)

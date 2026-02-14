@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for util-linux - provides libblkid and libmount."""
+
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+
+configure_make(
+    name = "libblkid",
+    lib_source = ":all_srcs",
+    out_static_libs = ["libblkid.a"],
+    out_shared_libs = ["libblkid.so.1"],
+    out_include_dir = "include/blkid",
+    configure_options = [
+        "--disable-all-programs",
+        "--enable-libblkid",
+        "--disable-libmount",
+        "--without-python",
+        "--without-systemd",
+        "--without-udev",
+    ],
+    # Disable pkg-config to avoid building glib from source
+    env = {"PKG_CONFIG": "false"},
+    visibility = ["//visibility:public"],
+)
+
+configure_make(
+    name = "libmount",
+    lib_source = ":all_srcs",
+    out_static_libs = ["libmount.a"],
+    out_shared_libs = ["libmount.so.1"],
+    out_include_dir = "include/libmount",
+    configure_options = [
+        "--disable-all-programs",
+        "--enable-libblkid",
+        "--enable-libmount",
+        "--without-python",
+        "--without-systemd",
+        "--without-udev",
+    ],
+    # Disable pkg-config to avoid building glib from source
+    env = {"PKG_CONFIG": "false"},
+    visibility = ["//visibility:public"],
+)
+
+# Combined target for both libraries
+configure_make(
+    name = "util-linux-libs",
+    lib_source = ":all_srcs",
+    out_static_libs = [
+        "libblkid.a",
+        "libmount.a",
+    ],
+    out_shared_libs = [
+        "libblkid.so.1",
+        "libmount.so.1",
+    ],
+    out_headers_only = True,
+    configure_options = [
+        "--disable-all-programs",
+        "--enable-libblkid",
+        "--enable-libmount",
+        "--without-python",
+        "--without-systemd",
+        "--without-udev",
+    ],
+    # Disable pkg-config to avoid building glib from source
+    env = {"PKG_CONFIG": "false"},
+    visibility = ["//visibility:public"],
+)

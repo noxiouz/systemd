@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for bazel configuration."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:config.bzl", "config_h")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "config.bzl",
+    "config.h.tpl",
+    "deps.bzl",
+])
+
+# Generate config.h from template
+config_h(
+    name = "config_h_gen",
+    template = "config.h.tpl",
+)
+
+# Create a wrapper header that includes config.h
+# This allows using textual_hdrs which adds proper include paths
+genrule(
+    name = "config_include_wrapper",
+    srcs = [":config_h_gen"],
+    outs = ["systemd-config.h"],
+    cmd = """
+cat > $@ << 'WRAPPER_EOF'
+/* Auto-generated wrapper for config.h */
+#ifndef SYSTEMD_CONFIG_WRAPPER_H
+#define SYSTEMD_CONFIG_WRAPPER_H
+WRAPPER_EOF
+cat $(location :config_h_gen) >> $@
+echo "#endif /* SYSTEMD_CONFIG_WRAPPER_H */" >> $@
+""",
+)
+
+# Wrap config.h in a cc_library for use as a dependency
+# Use textual_hdrs so the header is available for -include
+cc_library(
+    name = "config",
+    textual_hdrs = [
+        ":config_h_gen",
+        ":config_include_wrapper",
+    ],
+    includes = ["."],
+)

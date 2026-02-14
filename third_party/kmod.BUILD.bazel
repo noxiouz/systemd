@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for kmod - provides libkmod."""
+
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+
+configure_make(
+    name = "libkmod",
+    lib_source = ":all_srcs",
+    # kmod doesn't support static builds, only shared
+    out_shared_libs = ["libkmod.so.2"],
+    out_include_dir = "include",
+    configure_options = [
+        "--disable-tools",
+        "--disable-manpages",
+        "--disable-test-modules",
+        "--without-zstd",
+        "--without-xz",
+        "--without-zlib",
+        "--without-openssl",
+    ],
+    # Disable pkg-config to avoid building glib from source
+    env = {"PKG_CONFIG": "false"},
+    visibility = ["//visibility:public"],
+)

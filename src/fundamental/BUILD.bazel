@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for fundamental library - core utilities shared between EFI and user-space.
+
+Note: In the meson build, fundamental sources are compiled as part of libbasic_static,
+not as a separate library. For Bazel, we export the source files and headers
+as filegroups so basic can include them directly.
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+# Source files to be compiled as part of basic
+filegroup(
+    name = "fundamental_srcs",
+    srcs = [
+        "bootspec-fundamental.c",
+        "chid-fundamental.c",
+        "edid-fundamental.c",
+        "efivars-fundamental.c",
+        "sha1-fundamental.c",
+        "sha256-fundamental.c",
+        "string-util-fundamental.c",
+        "uki.c",
+    ],
+)
+
+# Header files
+filegroup(
+    name = "fundamental_hdrs",
+    srcs = [
+        "assert-fundamental.h",
+        "bootspec-fundamental.h",
+        "chid-fundamental.h",
+        "cleanup-fundamental.h",
+        "confidential-virt-fundamental.h",
+        "edid-fundamental.h",
+        "efi-fundamental.h",
+        "efivars-fundamental.h",
+        "iovec-util-fundamental.h",
+        "logarithm.h",
+        "macro-fundamental.h",
+        "memory-util-fundamental.h",
+        "sbat.h",
+        "sha1-fundamental.h",
+        "sha256-fundamental.h",
+        "string-table-fundamental.h",
+        "string-util-fundamental.h",
+        "strv-fundamental.h",
+        "tpm2-pcr.h",
+        "uki.h",
+        "unaligned-fundamental.h",
+    ],
+)
