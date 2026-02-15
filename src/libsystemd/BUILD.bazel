@@ -2,7 +2,7 @@
 
 """BUILD file for libsystemd - the public systemd library."""
 
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_shared_library", "cc_test")
 load("//bazel/rules:codegen.bzl", "shell_codegen")
 load("//bazel/rules:awk.bzl", "awk_codegen")
 
@@ -259,4 +259,128 @@ cc_shared_library(
 alias(
     name = "libsystemd",
     actual = ":systemd",
+)
+
+# ==============================================================================
+# Tests
+# ==============================================================================
+
+TEST_COPTS = [
+    "-fvisibility=default",
+    "-D_GNU_SOURCE",
+    "-D__SANE_USERSPACE_TYPES__",
+    "-D_LARGEFILE64_SOURCE",
+    "-D_FILE_OFFSET_BITS=64",
+    "-include", "$(GENDIR)/bazel/config.h",
+    "-I$(GENDIR)/src/version",
+]
+
+TEST_DEPS = [
+    "//bazel:config",
+    ":systemd_static",
+    "//src/shared:shared_static",
+]
+
+# sd-bus tests
+cc_test(
+    name = "test-bus-address",
+    srcs = ["sd-bus/test-bus-address.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-cleanup",
+    srcs = ["sd-bus/test-bus-cleanup.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-creds",
+    srcs = ["sd-bus/test-bus-creds.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-error",
+    srcs = ["sd-bus/test-bus-error.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-introspect",
+    srcs = ["sd-bus/test-bus-introspect.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-marshal",
+    srcs = ["sd-bus/test-bus-marshal.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-match",
+    srcs = ["sd-bus/test-bus-match.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-signature",
+    srcs = ["sd-bus/test-bus-signature.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-bus-vtable",
+    srcs = ["sd-bus/test-bus-vtable.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+# sd-event tests
+cc_test(
+    name = "test-sd-event",
+    srcs = ["sd-event/test-event.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+# Note: test-id128 is in src/test/, not here
+
+# sd-journal tests
+cc_test(
+    name = "test-journal-send",
+    srcs = ["sd-journal/test-journal-send.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-mmap-cache",
+    srcs = ["sd-journal/test-mmap-cache.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+cc_test(
+    name = "test-catalog",
+    srcs = ["sd-journal/test-catalog.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
+)
+
+# sd-netlink tests
+cc_test(
+    name = "test-netlink",
+    srcs = ["sd-netlink/test-netlink.c", "//src/version:version_h"],
+    copts = TEST_COPTS,
+    deps = TEST_DEPS,
 )
