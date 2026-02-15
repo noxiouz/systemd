@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for udev daemon and udevadm tool."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "link_config_gperf_c",
+    src = "net/link-config-gperf.gperf",
+    out = "link-config-gperf.c",
+)
+
+# Keyboard keys generation - use a stub for now since it requires cpp parsing
+genrule(
+    name = "keyboard_keys_from_name_inc",
+    outs = ["keyboard-keys-from-name.inc"],
+    cmd = """cat > $@ << 'EOF'
+/* Stub keyboard-keys-from-name.inc for Bazel build */
+/* Real generation requires shell script with cpp */
+struct key_name { const char *name; unsigned short id; };
+static const struct key_name *keyboard_lookup_key(const char *str, GPERF_LEN_TYPE len) {
+    (void)str; (void)len;
+    return NULL;
+}
+EOF
+""",
+)
+
+# ==============================================================================
+# Udev core library
+# ==============================================================================
+
+UDEV_CORE_SRCS = [
+    "net/link-config.c",
+    "udev-builtin.c",
+    "udev-builtin-btrfs.c",
+    "udev-builtin-dissect_image.c",
+    "udev-builtin-factory_reset.c",
+    "udev-builtin-hwdb.c",
+    "udev-builtin-input_id.c",
+    "udev-builtin-keyboard.c",
+    "udev-builtin-net_driver.c",
+    "udev-builtin-net_id.c",
+    "udev-builtin-net_setup_link.c",
+    "udev-builtin-path_id.c",
+    "udev-builtin-usb_id.c",
+    "udev-builtin-kmod.c",
+    "udev-builtin-blkid.c",
+    "udev-config.c",
+    "udev-ctrl.c",
+    "udev-dump.c",
+    "udev-error.c",
+    "udev-event.c",
+    "udev-format.c",
+    "udev-manager.c",
+    "udev-manager-ctrl.c",
+    "udev-node.c",
+    "udev-rules.c",
+    "udev-spawn.c",
+    "udev-varlink.c",
+    "udev-watch.c",
+    "udev-worker.c",
+]
+
+cc_library(
+    name = "udev_core",
+    srcs = UDEV_CORE_SRCS + [
+        ":link_config_gperf_c",
+        ":keyboard_keys_from_name_inc",
+        "//src/version:version_h",
+    ],
+    hdrs = glob(["*.h", "net/*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/udev",
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = [".", "net"],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# udevadm - udev administration tool
+# ==============================================================================
+
+UDEVADM_SRCS = [
+    "udevadm.c",
+    "udevadm-cat.c",
+    "udevadm-control.c",
+    "udevadm-hwdb.c",
+    "udevadm-info.c",
+    "udevadm-lock.c",
+    "udevadm-monitor.c",
+    "udevadm-settle.c",
+    "udevadm-test-builtin.c",
+    "udevadm-test.c",
+    "udevadm-trigger.c",
+    "udevadm-util.c",
+    "udevadm-verify.c",
+    "udevadm-wait.c",
+    "udevd.c",
+]
+
+cc_binary(
+    name = "udevadm",
+    srcs = UDEVADM_SRCS + glob(["udevadm*.h"]) + ["//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/udev",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":udev_core",
+        "//src/shared:shared_static",
+    ],
+)
+
+# systemd-udevd is typically a symlink to udevadm
+# We create a separate binary for clarity
+cc_binary(
+    name = "systemd-udevd",
+    srcs = UDEVADM_SRCS + glob(["udevadm*.h"]) + ["//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/udev",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":udev_core",
+        "//src/shared:shared_static",
+    ],
+)

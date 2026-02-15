@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-coredump and coredumpctl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "coredump_gperf_c",
+    src = "coredump-gperf.gperf",
+    out = "coredump-gperf.c",
+)
+
+# ==============================================================================
+# Coredump library
+# ==============================================================================
+
+COREDUMP_LIB_SRCS = [
+    "coredump-backtrace.c",
+    "coredump-config.c",
+    "coredump-context.c",
+    "coredump-kernel-helper.c",
+    "coredump-receive.c",
+    "coredump-send.c",
+    "coredump-submit.c",
+    "coredump-vacuum.c",
+]
+
+cc_library(
+    name = "coredump_lib",
+    srcs = COREDUMP_LIB_SRCS + [
+        ":coredump_gperf_c",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/coredump",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-coredump handler
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-coredump",
+    srcs = ["coredump.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/coredump",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":coredump_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# coredumpctl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "coredumpctl",
+    srcs = ["coredumpctl.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":coredump_lib",
+        "//src/shared:shared_static",
+    ],
+)

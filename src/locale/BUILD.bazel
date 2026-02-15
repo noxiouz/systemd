@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-localed and localectl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Localed library
+# ==============================================================================
+
+cc_library(
+    name = "localed_lib",
+    srcs = [
+        "localed-util.c",
+        "xkbcommon-util.c",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-localed daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-localed",
+    srcs = ["localed.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":localed_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# localectl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "localectl",
+    srcs = ["localectl.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

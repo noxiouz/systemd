@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-nspawn container manager."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "nspawn_gperf_c",
+    src = "nspawn-gperf.gperf",
+    out = "nspawn-gperf.c",
+)
+
+# ==============================================================================
+# Nspawn library
+# ==============================================================================
+
+NSPAWN_SRCS = [
+    "nspawn-expose-ports.c",
+    "nspawn-mount.c",
+    "nspawn-network.c",
+    "nspawn-oci.c",
+    "nspawn-settings.c",
+]
+
+cc_library(
+    name = "nspawn_lib",
+    srcs = NSPAWN_SRCS + [":nspawn_gperf_c"],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/nspawn",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-nspawn
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-nspawn",
+    srcs = [
+        "nspawn.c",
+        "nspawn-bind-user.c",
+        "nspawn-cgroup.c",
+        "nspawn-register.c",
+        "nspawn-seccomp.c",
+        "nspawn-setuid.c",
+        "nspawn-stub-pid1.c",
+    ],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/nspawn",
+    ],
+    deps = [
+        "//bazel:config",
+        ":nspawn_lib",
+        "//src/shared:shared_static",
+    ],
+)

@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-timesyncd."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "timesyncd_gperf_c",
+    src = "timesyncd-gperf.gperf",
+    out = "timesyncd-gperf.c",
+)
+
+# ==============================================================================
+# Timesyncd library
+# ==============================================================================
+
+TIMESYNCD_SRCS = [
+    "timesyncd-bus.c",
+    "timesyncd-conf.c",
+    "timesyncd-manager.c",
+    "timesyncd-server.c",
+]
+
+cc_library(
+    name = "timesyncd_lib",
+    srcs = TIMESYNCD_SRCS + [":timesyncd_gperf_c"],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/timesync",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-timesyncd daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-timesyncd",
+    srcs = ["timesyncd.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/timesync",
+    ],
+    linkopts = ["-lm"],
+    deps = [
+        "//bazel:config",
+        ":timesyncd_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-time-wait-sync
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-time-wait-sync",
+    srcs = ["wait-sync.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

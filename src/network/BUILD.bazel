@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-networkd and related tools."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "networkd_gperf_c",
+    src = "networkd-gperf.gperf",
+    out = "networkd-gperf.c",
+)
+
+gperf(
+    name = "networkd_network_gperf_c",
+    src = "networkd-network-gperf.gperf",
+    out = "networkd-network-gperf.c",
+)
+
+gperf(
+    name = "netdev_gperf_c",
+    src = "netdev/netdev-gperf.gperf",
+    out = "netdev-gperf.c",
+)
+
+# ==============================================================================
+# Network library (shared code for networkd)
+# ==============================================================================
+
+NETWORKD_SRCS = glob(
+    [
+        "networkd-*.c",
+        "netdev/*.c",
+        "tc/*.c",
+    ],
+    exclude = [
+        "networkd.c",
+        "networkd-gperf.gperf",
+        "**/test-*.c",
+        "**/fuzz-*.c",
+    ],
+)
+
+cc_library(
+    name = "networkd_lib",
+    srcs = NETWORKD_SRCS + [
+        ":networkd_gperf_c",
+        ":networkd_network_gperf_c",
+        ":netdev_gperf_c",
+    ],
+    hdrs = glob(["**/*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/network",
+    ],
+    includes = [".", "netdev", "tc"],
+    deps = [
+        "//bazel:config",
+        "//src/libsystemd-network:systemd_network",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-networkd daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-networkd",
+    srcs = ["networkd.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/network",
+    ],
+    deps = [
+        "//bazel:config",
+        ":networkd_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# networkctl CLI
+# ==============================================================================
+
+NETWORKCTL_SRCS = [
+    "networkctl.c",
+    "networkctl-address-label.c",
+    "networkctl-config-file.c",
+    "networkctl-description.c",
+    "networkctl-dump-util.c",
+    "networkctl-journal.c",
+    "networkctl-link-info.c",
+    "networkctl-list.c",
+    "networkctl-lldp.c",
+    "networkctl-misc.c",
+    "networkctl-status-link.c",
+    "networkctl-status-system.c",
+    "networkctl-util.c",
+]
+
+cc_binary(
+    name = "networkctl",
+    srcs = NETWORKCTL_SRCS + glob(["networkctl*.h"]) + ["//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/libsystemd-network:systemd_network",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-networkd-wait-online
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-networkd-wait-online",
+    srcs = glob(["wait-online/*.c", "wait-online/*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["wait-online"],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-network-generator
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-network-generator",
+    srcs = glob(
+        ["generator/*.c", "generator/*.h"],
+        exclude = ["generator/test-*.c"],
+    ),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["generator"],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

@@ -109,6 +109,28 @@
 #define ENABLE_UTMP 0
 #define ENABLE_LOGIND 1
 #define ENABLE_MACHINED 1
+#define ENABLE_TIMESYNCD 1
+#define ENABLE_RESOLVED 1
+#define ENABLE_NETWORKD 1
+
+/* DNS resolver defaults */
+#define DEFAULT_LLMNR_MODE RESOLVE_SUPPORT_YES
+#define DEFAULT_LLMNR_MODE_STR "yes"
+#define DEFAULT_MDNS_MODE RESOLVE_SUPPORT_YES
+#define DEFAULT_MDNS_MODE_STR "yes"
+#define DEFAULT_DNSSEC_MODE DNSSEC_ALLOW_DOWNGRADE
+#define DEFAULT_DNSSEC_MODE_STR "allow-downgrade"
+#define DEFAULT_DNS_OVER_TLS_MODE DNS_OVER_TLS_NO
+#define DEFAULT_DNS_OVER_TLS_MODE_STR "no"
+#define ENABLE_DNS_OVER_TLS 0
+#define ENABLE_COREDUMP 1
+#define ENABLE_OOMD 1
+#define NTP_SERVERS "time.google.com time.cloudflare.com"
+#define FALLBACK_NTP_SERVERS "time.google.com time.cloudflare.com"
+#define DNS_SERVERS "1.1.1.1#cloudflare-dns.com 8.8.8.8#dns.google 1.0.0.1#cloudflare-dns.com 8.8.4.4#dns.google"
+#define FALLBACK_DNS_SERVERS "1.1.1.1#cloudflare-dns.com 8.8.8.8#dns.google 1.0.0.1#cloudflare-dns.com 8.8.4.4#dns.google"
+#define SYSTEMD_NSPAWN_LOCALE "C.UTF-8"
+#define ENABLE_NSCD 0
 #define FALLBACK_HOSTNAME "localhost"
 #define SYSTEMD_DEFAULT_LOCALE "C.UTF-8"
 #define DEFAULT_USER_SHELL "/bin/bash"
@@ -307,3 +329,20 @@ typedef int32_t key_serial_t;
 /* EFI support - disabled for now */
 #define ENABLE_EFI 0
 #define HAVE_GNU_EFI 0
+
+/* EFI architecture name for bootctl */
+#if defined(__x86_64__)
+#define EFI_MACHINE_TYPE_NAME "x64"
+#elif defined(__i386__)
+#define EFI_MACHINE_TYPE_NAME "ia32"
+#elif defined(__aarch64__)
+#define EFI_MACHINE_TYPE_NAME "aa64"
+#elif defined(__arm__)
+#define EFI_MACHINE_TYPE_NAME "arm"
+#elif defined(__riscv) && __riscv_xlen == 64
+#define EFI_MACHINE_TYPE_NAME "riscv64"
+#elif defined(__loongarch64)
+#define EFI_MACHINE_TYPE_NAME "loongarch64"
+#else
+#define EFI_MACHINE_TYPE_NAME "unknown"
+#endif

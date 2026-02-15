@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for libsystemd-network - internal network library."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+LIBSYSTEMD_NETWORK_SRCS = [
+    "arp-util.c",
+    "dhcp-network.c",
+    "dhcp-option.c",
+    "dhcp-packet.c",
+    "dhcp6-network.c",
+    "dhcp6-option.c",
+    "dhcp6-protocol.c",
+    "icmp6-packet.c",
+    "icmp6-util.c",
+    "lldp-neighbor.c",
+    "lldp-network.c",
+    "ndisc-option.c",
+    "network-common.c",
+    "network-internal.c",
+    "sd-dhcp-client-id.c",
+    "sd-dhcp-client.c",
+    "sd-dhcp-duid.c",
+    "sd-dhcp-lease.c",
+    "sd-dhcp-server-lease.c",
+    "sd-dhcp-server.c",
+    "sd-dhcp6-client.c",
+    "sd-dhcp6-lease.c",
+    "sd-dns-resolver.c",
+    "sd-ipv4acd.c",
+    "sd-ipv4ll.c",
+    "sd-lldp-rx.c",
+    "sd-lldp-tx.c",
+    "sd-ndisc.c",
+    "sd-ndisc-neighbor.c",
+    "sd-ndisc-redirect.c",
+    "sd-ndisc-router.c",
+    "sd-ndisc-router-solicit.c",
+    "sd-radv.c",
+]
+
+cc_library(
+    name = "systemd_network",
+    srcs = LIBSYSTEMD_NETWORK_SRCS,
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/libsystemd:systemd_static",
+        "//src/shared:shared_hdrs",
+    ],
+)

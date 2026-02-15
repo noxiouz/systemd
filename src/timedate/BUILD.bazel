@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-timedated and timedatectl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Timedated library
+# ==============================================================================
+
+cc_library(
+    name = "timedated_lib",
+    srcs = ["hwclock-util.c"],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-timedated daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-timedated",
+    srcs = ["timedated.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":timedated_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# timedatectl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "timedatectl",
+    srcs = ["timedatectl.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

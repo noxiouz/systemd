@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-resolved and resolvectl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel/rules:gperf.bzl", "gperf")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Code Generation
+# ==============================================================================
+
+gperf(
+    name = "resolved_gperf_c",
+    src = "resolved-gperf.gperf",
+    out = "resolved-gperf.c",
+)
+
+gperf(
+    name = "resolved_dnssd_gperf_c",
+    src = "resolved-dnssd-gperf.gperf",
+    out = "resolved-dnssd-gperf.c",
+)
+
+gperf(
+    name = "resolved_dns_delegate_gperf_c",
+    src = "resolved-dns-delegate-gperf.gperf",
+    out = "resolved-dns-delegate-gperf.c",
+)
+
+# ==============================================================================
+# Resolved library (shared code)
+# ==============================================================================
+
+RESOLVED_SRCS = [
+    "resolved-bus.c",
+    "resolved-conf.c",
+    "resolved-dns-browse-services.c",
+    "resolved-dns-cache.c",
+    "resolved-dns-delegate.c",
+    "resolved-dns-delegate-bus.c",
+    "resolved-dns-dnssec.c",
+    "resolved-dns-query.c",
+    "resolved-dns-scope.c",
+    "resolved-dns-search-domain.c",
+    "resolved-dns-server.c",
+    "resolved-dns-stream.c",
+    "resolved-dns-stub.c",
+    "resolved-dns-synthesize.c",
+    "resolved-dns-transaction.c",
+    "resolved-dns-trust-anchor.c",
+    "resolved-dns-zone.c",
+    "resolved-dnssd-bus.c",
+    "resolved-dnssd.c",
+    "resolved-etc-hosts.c",
+    "resolved-hook.c",
+    "resolved-link-bus.c",
+    "resolved-link.c",
+    "resolved-llmnr.c",
+    "resolved-manager.c",
+    "resolved-mdns.c",
+    "resolved-resolv-conf.c",
+    "resolved-socket-graveyard.c",
+    "resolved-util.c",
+    "resolved-varlink.c",
+]
+
+cc_library(
+    name = "resolved_lib",
+    srcs = RESOLVED_SRCS + [
+        ":resolved_gperf_c",
+        ":resolved_dnssd_gperf_c",
+        ":resolved_dns_delegate_gperf_c",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/resolve",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-resolved daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-resolved",
+    srcs = ["resolved.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/resolve",
+    ],
+    linkopts = ["-lm"],
+    deps = [
+        "//bazel:config",
+        ":resolved_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# resolvectl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "resolvectl",
+    srcs = [
+        "resolvectl.c",
+        "resolvconf-compat.c",
+        "resolvconf-compat.h",
+        "//src/version:version_h",
+    ],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+        "-I$(GENDIR)/src/resolve",
+    ],
+    includes = ["."],
+    linkopts = ["-lm"],
+    deps = [
+        "//bazel:config",
+        ":resolved_lib",
+        "//src/shared:shared_static",
+    ],
+)

@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-oomd and oomctl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# OOM library
+# ==============================================================================
+
+OOMD_LIB_SRCS = [
+    "oomd-conf.c",
+    "oomd-manager.c",
+    "oomd-manager-bus.c",
+    "oomd-util.c",
+]
+
+cc_library(
+    name = "oomd_lib",
+    srcs = OOMD_LIB_SRCS + ["//src/version:version_h"],
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-oomd daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-oomd",
+    srcs = ["oomd.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        ":oomd_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# oomctl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "oomctl",
+    srcs = ["oomctl.c", "//src/version:version_h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+        "-I$(GENDIR)/src/version",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

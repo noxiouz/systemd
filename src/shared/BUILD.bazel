@@ -33,6 +33,19 @@ cc_library(
     ],
 )
 
+# Header-only library for internal network library (libsystemd-network)
+# This avoids circular dependency: shared depends on systemd_static,
+# but libsystemd-network needs shared headers without shared sources
+cc_library(
+    name = "shared_hdrs",
+    hdrs = glob(["*.h"]),
+    includes = ["."],
+    deps = [
+        "//src/basic",
+        "//src/libsystemd:systemd_static",
+    ],
+)
+
 # ==============================================================================
 # Code Generation: IP Protocol list
 # ==============================================================================
