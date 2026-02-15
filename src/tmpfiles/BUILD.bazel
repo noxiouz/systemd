@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for systemd-tmpfiles."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "tmpfiles_lib",
+    srcs = ["offline-passwd.c"],
+    hdrs = ["offline-passwd.h"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+cc_binary(
+    name = "systemd-tmpfiles",
+    srcs = ["tmpfiles.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        ":tmpfiles_lib",
+        "//src/shared:shared_static",
+    ],
+)

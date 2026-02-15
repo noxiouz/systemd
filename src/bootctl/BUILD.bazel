@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for bootctl."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+BOOTCTL_SRCS = [
+    "bootctl.c",
+    "bootctl-install.c",
+    "bootctl-random-seed.c",
+    "bootctl-reboot-to-firmware.c",
+    "bootctl-set-efivar.c",
+    "bootctl-status.c",
+    "bootctl-uki.c",
+    "bootctl-util.c",
+]
+
+cc_binary(
+    name = "bootctl",
+    srcs = BOOTCTL_SRCS + glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)

@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""BUILD file for machine tools."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ==============================================================================
+# Machined library (shared code)
+# ==============================================================================
+
+MACHINED_SRCS = [
+    "image.c",
+    "image-dbus.c",
+    "image-varlink.c",
+    "machine-dbus.c",
+    "machine-varlink.c",
+    "machine.c",
+    "machined-core.c",
+    "machined-dbus.c",
+    "machined-resolve-hook.c",
+    "machined-varlink.c",
+    "operation.c",
+]
+
+cc_library(
+    name = "machined_lib",
+    srcs = MACHINED_SRCS,
+    hdrs = glob(["*.h"]),
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    includes = ["."],
+    deps = [
+        "//bazel:config",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# systemd-machined daemon
+# ==============================================================================
+
+cc_binary(
+    name = "systemd-machined",
+    srcs = ["machined.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        ":machined_lib",
+        "//src/shared:shared_static",
+    ],
+)
+
+# ==============================================================================
+# machinectl CLI
+# ==============================================================================
+
+cc_binary(
+    name = "machinectl",
+    srcs = ["machinectl.c"],
+    copts = [
+        "-include", "$(GENDIR)/bazel/config.h",
+    ],
+    deps = [
+        "//bazel:config",
+        ":machined_lib",
+        "//src/shared:shared_static",
+    ],
+)
