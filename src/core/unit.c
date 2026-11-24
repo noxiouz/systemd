@@ -93,6 +93,7 @@ const UnitVTable * const unit_vtable[_UNIT_TYPE_MAX] = {
         [UNIT_PATH]      = &path_vtable,
         [UNIT_SLICE]     = &slice_vtable,
         [UNIT_SCOPE]     = &scope_vtable,
+        [UNIT_SCHEDULER] = &scheduler_vtable,
 };
 
 Unit* unit_new(Manager *m, size_t size) {

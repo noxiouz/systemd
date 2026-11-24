@@ -486,6 +486,7 @@ if install_tests
                 'test-path',
                 'test-path-util',
                 'test-sched-prio',
+                'test-scheduler',
                 'test-umount',
                 'integration-tests/TEST-07-PID1/TEST-07-PID1.units',
                 'integration-tests/TEST-03-JOBS/TEST-03-JOBS.units',

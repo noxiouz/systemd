@@ -2204,6 +2204,65 @@ int config_parse_path_spec(
         return 0;
 }
 
+int config_parse_slice_scheduler(
+                const char *unit,
+                const char *filename,
+                unsigned line,
+                const char *section,
+                unsigned section_line,
+                const char *lvalue,
+                int ltype,
+                const char *rvalue,
+                void *data,
+                void *userdata) {
+
+        _cleanup_free_ char *name = NULL, *prefix = NULL, *instance = NULL;
+        Unit *u = ASSERT_PTR(userdata), *scheduler;
+        Slice *s = ASSERT_PTR(SLICE(u));
+        int r;
+
+        if (isempty(rvalue)) {
+                unit_ref_unset(&s->scheduler);
+                return 0;
+        }
+
+        r = unit_name_printf(u, rvalue, &name);
+        if (r < 0)
+                return log_syntax_parse_error_full(unit, filename, line, r, /* critical= */ true, lvalue, rvalue);
+
+        if (unit_name_to_type(name) != UNIT_SCHEDULER)
+                return log_syntax(unit, LOG_ERR, filename, line, SYNTHETIC_ERRNO(ENOEXEC),
+                                  "Expected a .scheduler unit in %s=%s.", lvalue, name);
+
+        r = unit_name_to_prefix(u->id, &prefix);
+        if (r < 0)
+                return r;
+
+        if (unit_name_is_valid(name, UNIT_NAME_TEMPLATE)) {
+                _cleanup_free_ char *expanded = NULL;
+
+                r = unit_name_replace_instance(name, prefix, &expanded);
+                if (r < 0)
+                        return log_syntax_parse_error_full(unit, filename, line, r, /* critical= */ true, lvalue, name);
+
+                free_and_replace(name, expanded);
+        }
+
+        r = unit_name_to_instance(name, &instance);
+        if (r < 0)
+                return r;
+        if (!streq_ptr(prefix, instance))
+                return log_syntax(unit, LOG_ERR, filename, line, SYNTHETIC_ERRNO(ENOEXEC),
+                                  "%s=%s must name the scheduler instance for %s.", lvalue, name, u->id);
+
+        r = manager_load_unit_prepare(u->manager, name, NULL, NULL, &scheduler);
+        if (r < 0)
+                return r;
+
+        unit_ref_set(&s->scheduler, u, scheduler);
+        return 0;
+}
+
 int config_parse_socket_service(
                 const char *unit,
                 const char *filename,
@@ -6513,6 +6572,7 @@ void unit_dump_config_items(FILE *f) {
                 { config_parse_io_device_weight,      "DEVICEWEIGHT" },
                 { config_parse_io_device_latency,     "DEVICELATENCY" },
                 { config_parse_long,                  "LONG" },
+                { config_parse_slice_scheduler,       "SCHEDULER" },
                 { config_parse_socket_service,        "SERVICE" },
 #if HAVE_SELINUX
                 { config_parse_exec_selinux_context,  "LABEL" },

@@ -3090,6 +3090,7 @@ static const BusProperty** unit_type_properties[_UNIT_TYPE_MAX] = {
         [UNIT_TARGET]    = other_unit_properties,
         [UNIT_DEVICE]    = other_unit_properties,
         [UNIT_SWAP]      = other_unit_properties,
+        [UNIT_SCHEDULER] = other_unit_properties,
 };
 
 int bus_append_unit_property_assignment(sd_bus_message *m, UnitType t, const char *assignment) {

@@ -71,6 +71,7 @@ libcore_sources = files(
         'mount.c',
         'namespace.c',
         'path.c',
+        'scheduler.c',
         'scope.c',
         'selinux-access.c',
         'service.c',

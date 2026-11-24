@@ -493,6 +493,18 @@ static const BusObjectImplementation bus_path_object = {
                 { bus_path_vtable,        bus_unit_interface_find }),
 };
 
+static const sd_bus_vtable bus_scheduler_vtable[] = {
+        SD_BUS_VTABLE_START(0),
+        SD_BUS_VTABLE_END
+};
+
+static const BusObjectImplementation bus_scheduler_object = {
+        "/org/freedesktop/systemd1/unit",
+        "org.freedesktop.systemd1.Scheduler",
+        .fallback_vtables = BUS_FALLBACK_VTABLES(
+                { bus_scheduler_vtable,   bus_unit_interface_find }),
+};
+
 static const BusObjectImplementation bus_scope_object = {
         "/org/freedesktop/systemd1/unit",
         "org.freedesktop.systemd1.Scope",
@@ -573,6 +585,7 @@ static const BusObjectImplementation bus_manager_object = {
                         &bus_device_object,
                         &bus_mount_object,
                         &bus_path_object,
+                        &bus_scheduler_object,
                         &bus_scope_object,
                         &bus_service_object,
                         &bus_slice_object,
@@ -1356,6 +1369,7 @@ void dump_bus_properties(FILE *f) {
         vtable_dump_bus_properties(f, bus_manager_vtable);
         vtable_dump_bus_properties(f, bus_mount_vtable);
         vtable_dump_bus_properties(f, bus_path_vtable);
+        vtable_dump_bus_properties(f, bus_scheduler_vtable);
         vtable_dump_bus_properties(f, bus_scope_vtable);
         vtable_dump_bus_properties(f, bus_service_vtable);
         vtable_dump_bus_properties(f, bus_slice_vtable);

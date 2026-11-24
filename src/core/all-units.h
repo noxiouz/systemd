@@ -5,6 +5,7 @@
 #include "device.h"     /* IWYU pragma: export */
 #include "mount.h"      /* IWYU pragma: export */
 #include "path.h"       /* IWYU pragma: export */
+#include "scheduler.h"  /* IWYU pragma: export */
 #include "scope.h"      /* IWYU pragma: export */
 #include "service.h"    /* IWYU pragma: export */
 #include "slice.h"      /* IWYU pragma: export */

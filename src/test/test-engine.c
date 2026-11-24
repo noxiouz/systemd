@@ -7,6 +7,7 @@
 #include "manager.h"
 #include "manager-dump.h"
 #include "rm-rf.h"
+#include "scheduler.h"
 #include "service.h"
 #include "slice.h"
 #include "special.h"
@@ -288,6 +289,56 @@ TEST(engine) {
         ASSERT_NULL(unit_has_dependency(sauce, UNIT_ATOM_REFERENCED_BY, tomato));
         ASSERT_NULL(unit_has_dependency(fruit, UNIT_ATOM_REFERENCED_BY, tomato));
         ASSERT_NOT_NULL(unit_has_dependency(zupa, UNIT_ATOM_REFERENCED_BY, tomato));
+}
+
+TEST(scheduler_bindings) {
+        _cleanup_(rm_rf_physical_and_freep) char *runtime_dir = NULL;
+        _cleanup_free_ char *unit_dir = NULL;
+
+        ASSERT_OK(get_testdata_dir("test-scheduler", &unit_dir));
+        ASSERT_OK(setenv_unit_path(unit_dir));
+        ASSERT_NOT_NULL(runtime_dir = setup_fake_runtime_dir());
+
+        FOREACH_STRING(first, "lab-build-ci.slice", "batch@lab-build.scheduler", "lab.slice") {
+                _cleanup_(manager_freep) Manager *m = NULL;
+                Unit *root, *lab, *build, *sibling, *leaf, *escaped, *cleared, *unbound, *u;
+                int r;
+
+                r = manager_new(RUNTIME_SCOPE_USER, MANAGER_TEST_RUN_MINIMAL, &m);
+                if (manager_errno_skip_test(r))
+                        return (void) log_tests_skipped_errno(r, "manager_new");
+                ASSERT_OK(r);
+                ASSERT_OK(manager_startup(m, NULL, NULL, NULL, NULL));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, first, NULL, LOG_ERR, &u));
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-build-ci.slice", NULL, LOG_ERR, &leaf));
+                root = ASSERT_PTR(manager_get_unit(m, "-.slice"));
+                lab = ASSERT_PTR(manager_get_unit(m, "lab.slice"));
+                build = ASSERT_PTR(manager_get_unit(m, "lab-build.slice"));
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "interactive.slice", NULL, LOG_ERR, &sibling));
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(sibling)))->id, "latency@interactive.scheduler");
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(root)))->id, "partition@-.scheduler");
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(lab)))->id, "partition@lab.scheduler");
+                u = ASSERT_PTR(slice_get_configured_scheduler(SLICE(leaf)));
+                ASSERT_STREQ(u->id, "batch@lab-build.scheduler");
+                ASSERT_PTR_EQ(UNIT_DEREF(SCHEDULER(u)->target_slice), build);
+                ASSERT_PTR_EQ(UNIT_DEREF(SLICE(build)->scheduler), u);
+                ASSERT_PTR_EQ(manager_get_unit(m, "batch@lab-build.scheduler"), u);
+                ASSERT_PTR_EQ(slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(build))), UNIT_DEREF(SLICE(lab)->scheduler));
+                ASSERT_NULL(UNIT_DEREF(SLICE(leaf)->scheduler));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-x\\x2dy.slice", NULL, LOG_ERR, &escaped));
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(escaped)))->id, "batch@lab-x\\x2dy.scheduler");
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-clear.slice", NULL, LOG_ERR, &cleared));
+                ASSERT_NULL(UNIT_DEREF(SLICE(cleared)->scheduler));
+                ASSERT_PTR_EQ(slice_get_configured_scheduler(SLICE(cleared)), UNIT_DEREF(SLICE(lab)->scheduler));
+
+                FOREACH_STRING(invalid, "wrong.slice", "missing.slice", "conflict.slice", "batch@lab.scheduler")
+                        ASSERT_FAIL(manager_load_startable_unit_or_warn(m, invalid, NULL, LOG_DEBUG, &u));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "batch@unbound.scheduler", NULL, LOG_ERR, &unbound));
+                ASSERT_ERROR(unit_start(unbound, NULL), ENOLINK);
+        }
 }
 
 static int intro(void) {
