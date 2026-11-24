@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 option('linux-source', type : 'string', description : 'Pinned source tree used to build scx_qmap')
 option('qmap-build', type : 'string', description : 'Directory containing the matching include/ and obj/ outputs')
+option('mixed', type : 'boolean', value : false, description : 'Build the FIFO leaf and dispatch observer')

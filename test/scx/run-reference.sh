@@ -6,7 +6,8 @@ set -euo pipefail
 case "${1:-}" in
     '') mode=baseline ;;
     --identity) mode=identity ;;
-    *) echo "Usage: $0 [--identity]" >&2; exit 2 ;;
+    --mixed) mode=mixed ;;
+    *) echo "Usage: $0 [--identity|--mixed]" >&2; exit 2 ;;
 esac
 (( $# <= 1 )) || exit 2
 testdir=$(cd -- "$(dirname -- "$0")" && pwd)
@@ -34,18 +35,25 @@ apt() {
 apt update
 apt install -y --no-install-recommends \
     git ca-certificates make gcc libc6-dev clang-23 llvm bpftool pkgconf libelf-dev zlib1g-dev libcap-dev libssl-dev
-if [ "$2" = identity ]; then apt install -y --no-install-recommends meson; fi
+if [ "$2" != baseline ]; then apt install -y --no-install-recommends meson; fi
 git clone --filter=blob:none --depth=1 --sparse --branch v7.3 https://github.com/torvalds/linux.git scx-linux
 git -C scx-linux sparse-checkout set tools/sched_ext tools/build tools/scripts tools/lib tools/include \
     tools/bpf/bpftool tools/arch include scripts arch/arm64/include kernel/bpf
 test "$(git -C scx-linux rev-parse HEAD)" = "$1"
 make -C scx-linux/tools/sched_ext -j4 CLANG=clang-23 scx_qmap
 BUILD
-if [[ "$mode" == identity ]]; then
+if [[ "$mode" != baseline ]]; then
     limactl copy -r "$testdir/identity" scx-reference:/tmp/scx-identity >&2
+    build_mixed=false
+    if [[ "$mode" == mixed ]]; then build_mixed=true; fi
     "${guest[@]}" sh -ec 'cd /tmp/scx-identity && meson setup build \
-        -Dlinux-source=/tmp/scx-linux -Dqmap-build=/tmp/scx-linux/tools/sched_ext/build &&
-        meson compile -C build identity-provider' >&2
+        -Dlinux-source=/tmp/scx-linux -Dqmap-build=/tmp/scx-linux/tools/sched_ext/build \
+        -Dmixed="$1" && meson compile -C build' sh "$build_mixed" >&2
+    if [[ "$mode" == mixed ]]; then
+        "${guest[@]}" sudo python3 /tmp/scx-identity/dispatch.py /tmp/scx-identity/build \
+            --provider-revision "$provider" --fixture-revision "$revision" --image-sha256 "$image"
+        exit
+    fi
     "${guest[@]}" sudo python3 /tmp/scx-identity/matrix.py /tmp/scx-identity/build/identity-provider \
         --provider-revision "$provider" --image-sha256 "$image"
     exit

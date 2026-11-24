@@ -6,6 +6,19 @@ skeleton and a cooperative userspace loader, runs the matrix as root inside the 
 the guest. [reference.json](reference.json) records one successful run. Cgroup IDs, link IDs,
 kernel directory inodes and invocation IDs are allocated for each run.
 
+## Mixed providers and task dispatch
+
+Run `test/scx/run-reference.sh --mixed >scx-dispatch.json` to exercise qmap at the
+root, intermediate slice and sibling, with a separate single-queue FIFO policy at
+the grandchild. Both loaders use the same per-invocation protocol. The report
+records each provider's source, algorithm, roles, required features and build
+digests. A test-only tracing program counts calls to the installed kernel's
+`set_next_task_scx` by probe PID and live scheduler sysfs inode. Probe processes
+acknowledge wakeups over a pipe so ordinary tasks in partial mode also demonstrate
+forward progress. The run checks the inheriting slice, a sibling's ongoing
+dispatch across leaf removal, and explicit versus ordinary task policy at a
+partial-mode root.
+
 ## What establishes readiness
 
 1. The manager opens the target cgroup and gives the provider the FD, a fresh 128-bit invocation ID
