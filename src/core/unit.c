@@ -2028,6 +2028,13 @@ int unit_start(Unit *u, ActivationDetails *details) {
         if (!unit_verify_deps(u))
                 return -ENOLINK;
 
+        /* A condition-skipped or lost scheduler may have completed its job successfully. Check
+         * the complete configured chain immediately before handing admission to the unit type. */
+        for (Unit *scheduler = unit_get_start_scheduler(u); scheduler; scheduler = unit_get_start_scheduler(scheduler))
+                if (unit_active_state(scheduler) != UNIT_ACTIVE)
+                        return log_unit_notice_errno(u, SYNTHETIC_ERRNO(ENOLINK),
+                                                     "Required scheduler %s is not attached.", scheduler->id);
+
         /* Forward to the main object, if we aren't it. */
         following = unit_following(u);
         if (following) {

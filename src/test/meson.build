@@ -684,6 +684,13 @@ executables += [
                 'dependencies' : common_test_dependencies,
         },
         core_test_template + {
+                'sources' : files('test-scheduler.c'),
+                'type' : 'manual', # Registered in test/meson.build with the executor dependency.
+                # The test supplies its own asynchronous backend. Keep PID 1 free of test hooks.
+                'link_with' : [libcore_static, libshared],
+                'dependencies' : common_test_dependencies,
+        },
+        core_test_template + {
                 'sources' : files('test-exec-directory.c'),
         },
         core_test_template + {

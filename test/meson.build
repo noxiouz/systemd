@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
+if want_tests != 'false' and 'test-scheduler' in executables_by_name
+        test('test-scheduler',
+             executables_by_name['test-scheduler'],
+             depends : executables_by_name[conf.get('SYSTEMD_MULTICALL_BINARY') == 1 ? 'systemd' : 'systemd-executor'],
+             env : test_env,
+             suite : 'core')
+endif
+
 if conf.get('ENABLE_SYSUSERS') == 1
         test_sysusers_sh = configure_file(
                 input : 'test-sysusers.sh.in',
