@@ -30,3 +30,7 @@ if get_option('mixed')
                 endif
         endforeach
 endif
+
+if get_option('legacy-root')
+        executable('simple-provider', 'provider.c', 'simple.c', include_directories : includes, dependencies : deps)
+endif

@@ -1,0 +1,156 @@
+{
+  "systemd_revision": "0c2938791821384a8e51f2c48c871825b50ffb97",
+  "provider_revision": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+  "cold": {
+    "guest": {
+      "kernel": "7.3.5+deb14-cloud-arm64",
+      "image_sha256": "2203f7dab8af7c7e82ff7a3b2e6c3a2ce7a48444db3d56679965fde7c303cdf5",
+      "kernel_sha256": "7ae647d15b45d269fa4244b0af7b6a560ae3ba321587d2d01692ddefa4bc2b0c",
+      "kernel_config_sha256": "45d5b0e005ef386b3d2baef4dc41c6e9dfc0f4f9950e05450f81d4a1fbc9081d",
+      "btf_sha256": "6a35a446f36cbc1faf6b8ee4c63d2726768f7f9cc35b8097d936e87ca481df7c",
+      "probe": {
+        "hierarchy": "supported",
+        "btf": "/sys/kernel/btf/vmlinux"
+      },
+      "manager": "/opt/scx-pid1/0c29387918/systemd",
+      "kernel_config": [
+        "CONFIG_SCHED_CLASS_EXT=y",
+        "CONFIG_EXT_SUB_SCHED=y",
+        "CONFIG_DEBUG_INFO_BTF=y"
+      ]
+    },
+    "initrd_sha256": "2053ef1aed4b00c3bd101f055561d8aa39e7c29009ab2ee504f5dbee6b152b71",
+    "cases": [
+      {
+        "case": "delay",
+        "events": [
+          {
+            "boot_id": "936c5576-4c30-43e7-8488-3379955327a0",
+            "event": "loader-delayed",
+            "generation": "877657e334ee4fa7b44510151417c308",
+            "mount": "/scxloader",
+            "usec": 3485736
+          },
+          {
+            "boot_id": "936c5576-4c30-43e7-8488-3379955327a0",
+            "event": "loader-released",
+            "usec": 4987250
+          },
+          {
+            "boot_id": "936c5576-4c30-43e7-8488-3379955327a0",
+            "event": "workload-started",
+            "first_usec": 5173001,
+            "usec": 5173002
+          },
+          {
+            "active_enter_usec": 5133557,
+            "boot_id": "936c5576-4c30-43e7-8488-3379955327a0",
+            "event": "workload-finished",
+            "first_usec": 5173001,
+            "kernel_state": "enabled",
+            "manager": "/opt/scx-pid1/0c29387918/systemd",
+            "ops": "qmap",
+            "usec": 5179084
+          }
+        ],
+        "console_sha256": "9e2012f425ec37933a9b735a0a5007cdae7b882d9b8c05819859fea9658eb3cb",
+        "target": "scxboot.target"
+      },
+      {
+        "case": "missing",
+        "events": [],
+        "console_sha256": "39d8e8d63d2a874e1d249246454bfe1a5812cafa1cd15e0fc9c6f61584c3b9d3",
+        "failure_seconds": 0.013,
+        "timeout_seconds": 8,
+        "diagnostic": [
+          "[FAILED] Failed to start scxboot@-.scheduler.",
+          "[DEPEND] Dependency failed for scxboot-workload.service.",
+          "[DEPEND] Dependency failed for scxboot.target.",
+          "scxboot.target: Job scxboot.target/start failed with result 'dependency'.",
+          "[    3.241099] (ssing-provider)[353]: scxboot@-.scheduler: scxboot@-.scheduler: Unable to locate executable '/scxloader/missing-provider': No such file or directory"
+        ],
+        "workload_markers": 0
+      },
+      {
+        "case": "recovery",
+        "events": [
+          {
+            "boot_id": "123cea52-9c8a-4a0d-adcf-ec29d8c48c81",
+            "event": "workload-started",
+            "first_usec": 3277686,
+            "usec": 3277687
+          },
+          {
+            "active_enter_usec": 0,
+            "boot_id": "123cea52-9c8a-4a0d-adcf-ec29d8c48c81",
+            "event": "workload-finished",
+            "first_usec": 3277686,
+            "kernel_state": "disabled",
+            "manager": "/opt/scx-pid1/0c29387918/systemd",
+            "ops": "",
+            "usec": 3278177
+          }
+        ],
+        "console_sha256": "bd38e9ba12f6810892f4df53f45c4c0bec134568fee3eb88d273572ef8e4c8fa",
+        "recovery": [
+          "initrd-console",
+          "host-root-mounted",
+          "late-root-override",
+          "switch-root"
+        ],
+        "target": "scxboot.target"
+      },
+      {
+        "case": "control",
+        "events": [
+          {
+            "boot_id": "c532fc29-7e9c-49ca-9c83-5aacdcf9ea23",
+            "event": "workload-started",
+            "first_usec": 3525827,
+            "usec": 3525828
+          },
+          {
+            "active_enter_usec": 0,
+            "boot_id": "c532fc29-7e9c-49ca-9c83-5aacdcf9ea23",
+            "event": "workload-finished",
+            "first_usec": 3525827,
+            "kernel_state": "disabled",
+            "manager": "/opt/scx-pid1/0c29387918/systemd",
+            "ops": "",
+            "usec": 3526309
+          }
+        ],
+        "console_sha256": "475784fe4322336ded7270dd54c61431077eccb938719b84af8d2f9de73db99f",
+        "target": "scxboot.target"
+      }
+    ],
+    "recovery_initrd_sha256": "2600b287ee25cfab815061ff7a9f74c70610ec24547c007e57c89f7ea131ce79",
+    "bash_sha256": "44e8a88eac6102a86110e809bd27cce71155c4f42d156cf0049ebe2e2c6a6510"
+  },
+  "unsupported": {
+    "kernel": "6.19.10-300.fc44.aarch64",
+    "image_sha256": "55c60a3b80d3616a08705afd0459e75fe9f03c54aba7a46e4002a41a72fa0d5b",
+    "kernel_sha256": "e55a5f9a9177267f58d1e957f58e6b294a4552cfe7cdf72174e686edd6b474da",
+    "kernel_config_sha256": "044be830f7df5cb19c1b38ea42383e1a770b3722efb2b375cc86ac2efcfb2530",
+    "btf_sha256": "cb0803f3e79f65220a56d1633a4328b9092c50cfd0009eb7357f80f84bddad06",
+    "probe": {
+      "hierarchy": "unsupported",
+      "btf": "/sys/kernel/btf/vmlinux"
+    },
+    "manager": "/opt/scx11-final/systemd",
+    "kernel_config": [
+      "CONFIG_SCHED_CLASS_EXT=y",
+      "CONFIG_DEBUG_INFO_BTF=y"
+    ],
+    "root_state": "active",
+    "root_ops": "simple",
+    "start_exit_status": 1,
+    "diagnostic": "A dependency job for scxneg-workload.service failed. See 'journalctl -xe' for details.",
+    "invocation": "1c8a239d986847d4b29dce6cb802dd49",
+    "messages": "Failed to start scxnegchild@scxneg.scheduler.\nscxnegchild@scxneg.scheduler: Failed to attach scheduler to scxneg.slice: Operation not supported",
+    "child_state": "failed",
+    "workload_markers": 0,
+    "parent_after": "active",
+    "teardown": "disabled"
+  }
+}
