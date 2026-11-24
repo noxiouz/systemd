@@ -438,6 +438,7 @@ static void print_unit_dependency_mask(FILE *f, const char *kind, UnitDependency
                 { UNIT_DEPENDENCY_MOUNTINFO,          "mountinfo"          },
                 { UNIT_DEPENDENCY_PROC_SWAP,          "proc-swap"          },
                 { UNIT_DEPENDENCY_SLICE_PROPERTY,     "slice-property"     },
+                { UNIT_DEPENDENCY_SCHEDULER,          "scheduler"          },
         };
 
         assert(f);

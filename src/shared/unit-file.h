@@ -34,6 +34,7 @@ static inline bool unit_type_may_alias(UnitType type) {
 
 static inline bool unit_type_may_template(UnitType type) {
         return IN_SET(type,
+                      UNIT_SCHEDULER,
                       UNIT_SERVICE,
                       UNIT_SOCKET,
                       UNIT_TARGET,

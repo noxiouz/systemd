@@ -31,6 +31,20 @@ static void slice_init(Unit *u) {
         s->activating_concurrency_max = UINT_MAX;
 }
 
+static void slice_done(Unit *u) {
+        unit_ref_unset(&ASSERT_PTR(SLICE(u))->scheduler);
+}
+
+Unit* slice_get_configured_scheduler(Slice *slice) {
+        for (Unit *u = UNIT(slice); u; u = UNIT_GET_SLICE(u)) {
+                Unit *scheduler = UNIT_DEREF(SLICE(u)->scheduler);
+                if (scheduler)
+                        return scheduler;
+        }
+
+        return NULL;
+}
+
 static void slice_set_state(Slice *s, SliceState state) {
         SliceState old_state;
 
@@ -190,6 +204,21 @@ static int slice_load(Unit *u) {
                 r = unit_name_to_path(u->id, &tmp);
                 if (r >= 0)  /* Failure is ignored… */
                         u->description = strjoin("Slice ", tmp);
+        }
+
+        Unit *scheduler = UNIT_DEREF(s->scheduler);
+        if (scheduler) {
+                r = unit_load(scheduler);
+                if (r < 0 || scheduler->load_state != UNIT_LOADED)
+                        return log_unit_error_errno(u, r < 0 ? r : SYNTHETIC_ERRNO(ENOEXEC),
+                                                    "Cannot load Scheduler=%s (state: %s).", scheduler->id,
+                                                    unit_load_state_to_string(scheduler->load_state));
+
+                /* The scheduler also references its target. Let GC mark this edge in both
+                 * directions so collecting an idle cycle cannot clear a live slice's binding. */
+                r = unit_add_dependency(u, UNIT_REFERENCES, scheduler, /* add_reference= */ false, UNIT_DEPENDENCY_FILE);
+                if (r < 0)
+                        return r;
         }
 
         return slice_verify(s);
@@ -487,6 +516,7 @@ const UnitVTable slice_vtable = {
         .can_set_managed_oom = true,
 
         .init = slice_init,
+        .done = slice_done,
         .load = slice_load,
 
         .coldplug = slice_coldplug,

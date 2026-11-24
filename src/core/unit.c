@@ -93,6 +93,7 @@ const UnitVTable * const unit_vtable[_UNIT_TYPE_MAX] = {
         [UNIT_PATH]      = &path_vtable,
         [UNIT_SLICE]     = &slice_vtable,
         [UNIT_SCOPE]     = &scope_vtable,
+        [UNIT_SCHEDULER] = &scheduler_vtable,
 };
 
 Unit* unit_new(Manager *m, size_t size) {
@@ -2027,6 +2028,13 @@ int unit_start(Unit *u, ActivationDetails *details) {
         if (!unit_verify_deps(u))
                 return -ENOLINK;
 
+        /* A condition-skipped or lost scheduler may have completed its job successfully. Check
+         * the complete configured chain immediately before handing admission to the unit type. */
+        for (Unit *scheduler = unit_get_start_scheduler(u); scheduler; scheduler = unit_get_start_scheduler(scheduler))
+                if (!scheduler_is_attached(SCHEDULER(scheduler)))
+                        return log_unit_notice_errno(u, SYNTHETIC_ERRNO(ENOLINK),
+                                                     "Required scheduler %s is not attached.", scheduler->id);
+
         /* Forward to the main object, if we aren't it. */
         following = unit_following(u);
         if (following) {
@@ -3519,7 +3527,7 @@ int unit_set_slice(Unit *u, Unit *slice) {
 
         /* Remove any slices assigned prior; we should only have one UNIT_IN_SLICE dependency */
         if (UNIT_GET_SLICE(u))
-                unit_remove_dependencies(u, UNIT_DEPENDENCY_SLICE_PROPERTY);
+                unit_remove_dependencies(u, UNIT_DEPENDENCY_SLICE_PROPERTY | UNIT_DEPENDENCY_SCHEDULER);
 
         r = unit_add_dependency(u, UNIT_IN_SLICE, slice, /* add_reference= */ true, UNIT_DEPENDENCY_SLICE_PROPERTY);
         if (r < 0)
@@ -3887,6 +3895,11 @@ int unit_coldplug(Unit *u) {
         if (UNIT_VTABLE(u)->coldplug)
                 RET_GATHER(r, UNIT_VTABLE(u)->coldplug(u));
 
+        if (u->job && IN_SET(u->job->type, JOB_START, JOB_RESTART)) {
+                Unit *scheduler = unit_get_start_scheduler(u);
+                if (scheduler)
+                        RET_GATHER(r, unit_set_scheduler_dependencies(u, scheduler));
+        }
         if (u->job)
                 RET_GATHER(r, job_coldplug(u->job));
         if (u->nop_job)

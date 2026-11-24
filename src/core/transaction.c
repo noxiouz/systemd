@@ -11,6 +11,7 @@
 #include "hash-funcs.h"
 #include "manager.h"
 #include "set.h"
+#include "scheduler.h"
 #include "slice.h"
 #include "string-util.h"
 #include "strv.h"
@@ -1146,6 +1147,20 @@ int transaction_add_job_and_dependencies(
 
         /* Finally, recursively add in all dependencies. */
         if (IN_SET(type, JOB_START, JOB_RESTART)) {
+                /* All slice ancestors have been loaded at this point. Make activation essential to
+                 * this transaction, without establishing stop propagation to already running workloads. */
+                Unit *scheduler = unit_get_start_scheduler(unit);
+                if (scheduler) {
+                        r = unit_set_scheduler_dependencies(unit, scheduler);
+                        if (r < 0)
+                                goto fail;
+
+                        r = transaction_add_job_and_dependencies(tr, JOB_START, scheduler, job,
+                                                                 TRANSACTION_MATTERS | (flags & TRANSACTION_IGNORE_ORDER), e);
+                        if (r < 0)
+                                goto fail;
+                }
+
                 UNIT_FOREACH_DEPENDENCY_SAFE(dep, job->unit, UNIT_ATOM_PULL_IN_START) {
                         r = transaction_add_job_and_dependencies(tr, JOB_START, dep, job, TRANSACTION_MATTERS | (flags & TRANSACTION_IGNORE_ORDER), e);
                         if (r < 0) {

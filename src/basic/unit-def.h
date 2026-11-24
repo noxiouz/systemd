@@ -18,6 +18,7 @@ typedef enum UnitType {
         UNIT_PATH,
         UNIT_SLICE,
         UNIT_SCOPE,
+        UNIT_SCHEDULER,
         _UNIT_TYPE_MAX,
         _UNIT_TYPE_INVALID = -EINVAL,
         _UNIT_TYPE_ERRNO_MAX = -ERRNO_MAX, /* Ensure the whole errno range fits into this enum */

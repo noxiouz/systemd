@@ -72,6 +72,28 @@ mkosi in the systemd reposistory, so any local modifications to the mkosi
 configuration (e.g. in `mkosi/mkosi.local.conf`) are automatically picked up and used
 by the integration tests as well.
 
+## Testing sched_ext sub-schedulers
+
+`TEST-99-SCHED-EXT` runs in a VM with eight vCPUs. The guest needs Python,
+`bpftool` and a hierarchical `scx_qmap` on its PATH.
+
+```sh
+meson test -C build --setup=integration -v TEST-99-SCHED-EXT
+```
+
+For a standalone reference run on an arm64 host with Lima, run
+`test/scx/run-reference.sh > sched-ext-report.json` from the repository root.
+It boots a fresh digest-pinned Debian cloud image with its distribution kernel,
+builds the upstream Linux v7.3 example loader using Clang 23, and deletes the guest
+after the run. The JSON records the image, kernel, BTF, loader, attachment tree,
+nearest attached ancestor of the unbound slice, and teardown. Package installation and the provider checkout
+need network access. The test uses root privileges inside the disposable guest.
+
+To inspect a running kernel before attaching a scheduler, run
+`python3 test/scx/baseline.py --probe`. A supported hierarchy returns 0,
+a successful probe with the kernel function absent returns 77, and an unavailable
+or unreadable probe returns 1.
+
 ## Iterating on an integration test
 
 To iterate on an integration test, let's first get a shell in the integration test environment by running

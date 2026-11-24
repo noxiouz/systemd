@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+[Unit]
+DefaultDependencies=no
+OnFailure=workload-failed@%i.target
+
+[Service]
+Slice=lab-build-ci.slice
+Type=exec
+ExecCondition=/usr/bin/touch %t/%i.condition
+ExecStartPre=/usr/bin/touch %t/%i.pre
+ExecStart=/bin/sh -c 'touch %t/%i.start && exec sleep 60'

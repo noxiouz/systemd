@@ -10,6 +10,8 @@ typedef struct Slice {
 
         SliceState state, deserialized_state;
 
+        UnitRef scheduler;
+
         unsigned concurrency_soft_max;
         unsigned concurrency_hard_max;
         unsigned activating_concurrency_max;
@@ -22,6 +24,8 @@ typedef struct Slice {
 extern const UnitVTable slice_vtable;
 
 DEFINE_CAST(SLICE, Slice);
+
+Unit* slice_get_configured_scheduler(Slice *slice);
 
 unsigned slice_get_currently_active(Slice *slice, Unit *ignore, bool with_pending);
 
