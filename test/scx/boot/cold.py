@@ -58,7 +58,7 @@ def boot(args, case, overlay, console_path, initrd):
         cmdline += ' rd.systemd.break=pre-switch-root'
     accel = args.accel
     cmd = ['qemu-system-aarch64', '-machine', f'virt,accel={accel}', '-cpu', 'max' if accel == 'tcg' else 'host',
-           '-smp', '8', '-m', '4G', '-display', 'none', '-nodefaults', '-no-reboot', '-serial', 'stdio', '-monitor', 'none',
+           '-smp', str(args.cpus), '-m', '4G', '-display', 'none', '-nodefaults', '-no-reboot', '-serial', 'stdio', '-monitor', 'none',
            '-kernel', args.kernel, '-initrd', initrd, '-append', cmdline,
            '-drive', f'file={overlay},format=qcow2,if=none,id=osdisk', '-device', 'virtio-blk-pci,drive=osdisk']
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -146,6 +146,7 @@ def main():
     parser.add_argument('--accel', choices=['hvf', 'kvm', 'tcg'],
                         default='hvf' if platform.system() == 'Darwin' else 'kvm' if os.access('/dev/kvm', os.W_OK) else 'tcg')
     parser.add_argument('--boot-timeout', type=int, default=300)
+    parser.add_argument('--cpus', type=int, default=8, help='number of vCPUs for each cold-boot guest')
     args = parser.parse_args()
     args.logs.mkdir(parents=True, exist_ok=True)
     if any(args.logs.iterdir()):
@@ -156,7 +157,7 @@ def main():
     metadata = json.loads(args.metadata.read_text())
     if metadata['kernel_sha256'] != file_digest(args.kernel) or metadata['probe']['hierarchy'] != 'supported':
         parser.error('guest metadata must describe this kernel with hierarchy support')
-    result = dict(guest=metadata, initrd_sha256=file_digest(args.initrd), cases=[])
+    result = dict(guest=metadata, vcpu_count=args.cpus, initrd_sha256=file_digest(args.initrd), cases=[])
     with tempfile.TemporaryDirectory() as tmp:
         repaired_initrd = recovery_initrd(args.initrd, args.bash, Path(tmp))
         result.update(recovery_initrd_sha256=file_digest(repaired_initrd), bash_sha256=file_digest(args.bash))

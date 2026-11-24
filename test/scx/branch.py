@@ -137,6 +137,8 @@ def run(build, report):
                 (trace / 'events/sched_ext/sched_ext_exit/enable').write_text('1')
                 with observer(build / 'dispatch.bpf.o') as counter:
                     ctl('start', BUILD, INTERACTIVE)
+                    assert prop('lab.slice', 'Scheduler') == MIDDLE, 'lost the local binding on lab.slice'
+                    assert prop(LEAF, 'ParentScheduler') == MIDDLE, 'leaf bypassed its configured parent'
                     wait_for(lambda: len(snapshot()) == 4, 'warm four-node tree')
                     ids = {n: cgroup(s).stat().st_ino for n, s in [(MIDDLE, 'lab.slice'), (LEAF, 'lab-build.slice'),
                                                                    (SIBLING, 'interactive.slice')]}

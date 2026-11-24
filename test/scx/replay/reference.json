@@ -1,0 +1,617 @@
+{
+  "note": "Pre-release execution, before adding this report to the source tree. See the ticket and replay record for both complete final-revision archives.",
+  "revision": "da1f73f95625dc4f2e8cf6242c9b314f164e3026",
+  "tree": "eb92b305b9a79c08349996261d13ba9d18bf3395",
+  "userspace_source_tree": "b4069a2b59bcfefac17b2801260cda3600d32433",
+  "result": "PASS",
+  "host": {
+    "machine": "aarch64",
+    "node": "lima-scxlinux",
+    "processor": "",
+    "release": "7.3.5+deb14-cloud-arm64",
+    "system": "Linux",
+    "version": "#1 SMP PREEMPT Debian 7.3.5-1 (2026-11-18)"
+  },
+  "image_sha256": "2203f7dab8af7c7e82ff7a3b2e6c3a2ce7a48444db3d56679965fde7c303cdf5",
+  "kernel_sha256": "7ae647d15b45d269fa4244b0af7b6a560ae3ba321587d2d01692ddefa4bc2b0c",
+  "kernel_config_sha256": "45d5b0e005ef386b3d2baef4dc41c6e9dfc0f4f9950e05450f81d4a1fbc9081d",
+  "provider_revision": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+  "vcpu_count": 8,
+  "providers": {
+    "fixture_fifo": {
+      "algorithm": "Single shared FIFO dispatch queue",
+      "changes": "Test-owned BPF policy and cooperative loader, built separately in userspace.",
+      "requires": [
+        "sched_ext",
+        "CID struct_ops",
+        "BPF arena",
+        "sub-scheduling"
+      ],
+      "revision": "da1f73f95625dc4f2e8cf6242c9b314f164e3026",
+      "roles": [
+        "delegated leaf"
+      ],
+      "source": "test/scx/identity/mixed/fifo.bpf.c",
+      "source_sha256": "c18570b76ceb2d644e0041bce0066577c73af8d59db7a1f871f303b1d9034718"
+    },
+    "qmap": {
+      "algorithm": "Weighted rotation across five FIFO queues",
+      "changes": "Cooperative loader configures the upstream BPF program with the target and mode.",
+      "requires": [
+        "sched_ext",
+        "CID struct_ops",
+        "BPF arena",
+        "sub-scheduling"
+      ],
+      "revision": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
+      "roles": [
+        "root",
+        "delegating intermediate",
+        "leaf"
+      ],
+      "source": "torvalds/linux/tools/sched_ext/scx_qmap.bpf.c"
+    }
+  },
+  "meson_tests": {
+    "core - systemd:test-engine": "OK",
+    "core - systemd:test-unit-name": "OK",
+    "test - systemd:test-bus-unit-util": "OK",
+    "test - systemd:test-unit-file": "OK",
+    "core - systemd:test-scheduler": "OK"
+  },
+  "tickets": {
+    "SCX-01": [
+      "supported",
+      "inconclusive",
+      "four-attachments-and-inheritance",
+      "unsupported"
+    ],
+    "SCX-02": [
+      "attachment-identity-and-loss"
+    ],
+    "SCX-03": [
+      "resolver",
+      "verify-valid",
+      "wrong",
+      "missing",
+      "conflict"
+    ],
+    "SCX-04": [
+      "activation-transactions"
+    ],
+    "SCX-05": [
+      "mixed-dispatch-inheritance-and-partial"
+    ],
+    "SCX-06": [
+      "native-lifecycle"
+    ],
+    "SCX-07": [
+      "strict-admission"
+    ],
+    "SCX-08": [
+      "observability"
+    ],
+    "SCX-09": [
+      "branch-restart-and-loss"
+    ],
+    "SCX-10": [
+      "reload-and-reexec"
+    ],
+    "SCX-11": [
+      "cold-boot-and-recovery",
+      "root-only-kernel"
+    ]
+  },
+  "observations": {
+    "SCX-02": [
+      "missing-parent",
+      "root-without-delegation",
+      "no-sub-attach",
+      "root",
+      "wrong-target",
+      "configured-intermediate",
+      "wrong-parent",
+      "capable-parent",
+      "parent-veto",
+      "same-algorithm-child",
+      "explicit-owned-detach",
+      "unrelated-sibling-after-detach",
+      "same-name-replacement",
+      "previous-start-reply",
+      "dropped-loss-notification",
+      "recreated-cgroup",
+      "recreated-cgroup-old-instance"
+    ],
+    "SCX-05": [
+      "probes/root",
+      "probes/middle",
+      "probes/inheriting",
+      "probes/sibling_before",
+      "probes/sibling_after",
+      "partial/ext",
+      "partial/ordinary"
+    ],
+    "SCX-06": [
+      "delayed-direct-start",
+      "wrong",
+      "stale",
+      "die",
+      "timeout",
+      "recreated-target",
+      "owned-stop-with-duplicate",
+      "occupied-target",
+      "clean-restart",
+      "short-startup-timeout-after-readiness"
+    ],
+    "SCX-07": [
+      "entry_points/normalcold",
+      "entry_points/normalwarm",
+      "entry_points/transientcold",
+      "entry_points/transientwarm",
+      "entry_points/socketcold",
+      "entry_points/socketwarm",
+      "failures/veto",
+      "failures/timeout",
+      "recovery/veto",
+      "recovery/timeout",
+      "concurrent_starts/shared_loader_starts",
+      "loss_after_admission/existing_pid",
+      "loss_after_admission/new_start"
+    ],
+    "SCX-08": [
+      "kernel-default",
+      "managed",
+      "evicted",
+      "foreign-replacement"
+    ],
+    "SCX-09": [
+      "restart/detach_order",
+      "restart/restoration",
+      "restart/sibling_dispatch",
+      "restart/build_dispatch",
+      "intermediate_conflict/preserved",
+      "intermediate_conflict/errno",
+      "leaf_loss/effective",
+      "leaf_loss/fallback_dispatch",
+      "root_loss/effective",
+      "root_loss/restored"
+    ],
+    "SCX-10": [
+      "healthy-reexec",
+      "restored-parent-restart",
+      "pending-ack-reexec",
+      "pending-exit-reexec",
+      "reload-changed-binding",
+      "journal"
+    ],
+    "SCX-11": [
+      "delay",
+      "missing",
+      "recovery",
+      "control"
+    ]
+  },
+  "attachments": {
+    "/": {
+      "ops": "qmap",
+      "pid": 7888,
+      "sysfs": "/sys/kernel/sched_ext/root"
+    },
+    "scxbase7872-build.slice": {
+      "ops": "qmap",
+      "pid": 7896,
+      "sysfs": "/sys/kernel/sched_ext/root/sub/sub-4519/sub/sub-4578"
+    },
+    "scxbase7872.slice": {
+      "ops": "qmap",
+      "pid": 7894,
+      "sysfs": "/sys/kernel/sched_ext/root/sub/sub-4519"
+    },
+    "scxsibling7872.slice": {
+      "ops": "qmap",
+      "pid": 7892,
+      "sysfs": "/sys/kernel/sched_ext/root/sub/sub-4725"
+    }
+  },
+  "inheritance": {
+    "direct_attachments": 0,
+    "leaf": "scxbase7872-build-ci.slice",
+    "nearest_ancestor": "scxbase7872-build.slice"
+  },
+  "teardown": {
+    "cgroups_removed": true,
+    "loader_exit": {
+      "/": 0,
+      "scxbase7872-build.slice": 0,
+      "scxbase7872.slice": 0,
+      "scxsibling7872.slice": 0
+    },
+    "state": "disabled"
+  },
+  "false_admissions": [],
+  "probes": {
+    "inheriting": {
+      "cgroup": "/sys/fs/cgroup/scx-mixed-7371c264b98e4373804929d8d4e0cca4/middle/fifo/inheriting.slice",
+      "dispatches_after": {
+        "23153": 12
+      },
+      "dispatches_before": {},
+      "expected_scx": true,
+      "invocation": "78d964c4e3c1453aadf2160c9b46ac12",
+      "kernel_node": 23153,
+      "link_id": 47,
+      "pid": 7989,
+      "policy": 0,
+      "wake_replies": 12
+    },
+    "middle": {
+      "cgroup": "/sys/fs/cgroup/scx-mixed-7371c264b98e4373804929d8d4e0cca4/middle/middle-work",
+      "dispatches_after": {
+        "23148": 12
+      },
+      "dispatches_before": {},
+      "expected_scx": true,
+      "invocation": "5e0643870db141bba86b70bc0d3fef3f",
+      "kernel_node": 23148,
+      "link_id": 45,
+      "pid": 7988,
+      "policy": 0,
+      "wake_replies": 12
+    },
+    "root": {
+      "cgroup": "/sys/fs/cgroup/scx-mixed-7371c264b98e4373804929d8d4e0cca4/root-work",
+      "dispatches_after": {
+        "23138": 12
+      },
+      "dispatches_before": {},
+      "expected_scx": true,
+      "invocation": "b60a753f04e6437a905fc9d862ae5d4f",
+      "kernel_node": 23138,
+      "link_id": 41,
+      "pid": 7987,
+      "policy": 0,
+      "wake_replies": 12
+    },
+    "sibling_after": {
+      "dispatches_after": {
+        "23143": 24
+      },
+      "dispatches_before": {
+        "23143": 12
+      },
+      "expected_scx": true,
+      "invocation": "6e4fd25d1a604283b778724f13960716",
+      "kernel_node": 23143,
+      "link_id": 43,
+      "pid": 7984,
+      "policy": 0,
+      "wake_replies": 12
+    },
+    "sibling_before": {
+      "dispatches_after": {
+        "23143": 12
+      },
+      "dispatches_before": {},
+      "expected_scx": true,
+      "invocation": "6e4fd25d1a604283b778724f13960716",
+      "kernel_node": 23143,
+      "link_id": 43,
+      "pid": 7984,
+      "policy": 0,
+      "wake_replies": 12
+    }
+  },
+  "partial": {
+    "ext": {
+      "dispatches_after": {
+        "23157": 12
+      },
+      "dispatches_before": {},
+      "expected_scx": true,
+      "invocation": "65a0af8917e44ee5b94e4fc5cd4616fd",
+      "kernel_node": 23157,
+      "link_id": 49,
+      "pid": 7992,
+      "policy": 7,
+      "wake_replies": 12
+    },
+    "ordinary": {
+      "dispatches_after": {},
+      "dispatches_before": {},
+      "expected_scx": false,
+      "invocation": "65a0af8917e44ee5b94e4fc5cd4616fd",
+      "kernel_node": 23157,
+      "link_id": 49,
+      "pid": 7993,
+      "policy": 0,
+      "wake_replies": 12
+    },
+    "root": {
+      "generation": "65a0af8917e44ee5b94e4fc5cd4616fd",
+      "link": 49,
+      "node_inode": 23157,
+      "ops": "qmap",
+      "sysfs": "/sys/kernel/sched_ext/root",
+      "target": 1
+    }
+  },
+  "admission_first_exec": {
+    "normalcold": {
+      "count": 1,
+      "first_ns": 88084457070,
+      "pid": 8699,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    },
+    "normalwarm": {
+      "count": 1,
+      "first_ns": 92082290497,
+      "pid": 8709,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    },
+    "transientcold": {
+      "count": 1,
+      "first_ns": 93494792846,
+      "pid": 8718,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    },
+    "transientwarm": {
+      "count": 1,
+      "first_ns": 94003358684,
+      "pid": 8728,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    },
+    "socketcold": {
+      "count": 1,
+      "first_ns": 94470383905,
+      "pid": 8737,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    },
+    "socketwarm": {
+      "count": 1,
+      "first_ns": 95426420966,
+      "pid": 8747,
+      "level": 2,
+      "nodes": [
+        23251,
+        23256,
+        23266
+      ]
+    }
+  },
+  "failure_jobs": {
+    "veto": {
+      "returncode": 1,
+      "reason": "parent rejected",
+      "invocation": "5ad36664628840ec8ec26ccfdb36b913",
+      "journal": [
+        "Starting scx07fifo@scx07lab-build.scheduler...",
+        "scx07fifo@scx07lab-build.scheduler: Scheduler terminal record (kind=1024, code=0): parent rejected (-28): Operation canceled",
+        "Failed to start scx07fifo@scx07lab-build.scheduler."
+      ],
+      "markers": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      }
+    },
+    "timeout": {
+      "returncode": 1,
+      "reason": "timed out",
+      "invocation": "f7266d19ae984ed78f044c8acac4bcd0",
+      "journal": [
+        "Starting scx07fifo@scx07lab-build.scheduler...",
+        "scx07fifo@scx07lab-build.scheduler: Scheduler confirmation timed out: Connection timed out",
+        "Failed to start scx07fifo@scx07lab-build.scheduler."
+      ],
+      "markers": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      }
+    }
+  },
+  "branch_restart": {
+    "detach_order": [
+      9067,
+      9008
+    ],
+    "restoration": [
+      "partition@lab.scheduler",
+      "batch@lab-build.scheduler"
+    ],
+    "sibling_link": 111,
+    "sibling_pid": 9124,
+    "build_pid": 9126,
+    "sibling_dispatch": [
+      1,
+      3
+    ],
+    "build_dispatch": [
+      1,
+      3
+    ]
+  },
+  "kernel_fallback": {
+    "leaf_loss": "partition@lab.scheduler",
+    "root_loss": "kernel"
+  },
+  "intermediate_conflict": {
+    "target": 9630,
+    "preserved": {
+      "node": 23356,
+      "parent": 1,
+      "ops": "qmap"
+    },
+    "link": 119,
+    "errno": 16,
+    "journal": "late@extra.scheduler: Invalid or failed scheduler confirmation: Device or resource busy"
+  },
+  "boot": [
+    {
+      "case": "delay",
+      "events": [
+        {
+          "boot_id": "3f901b99-4c5d-480f-afc7-fddba6b98a90",
+          "event": "loader-delayed",
+          "generation": "96629eea66ef4a0ea40385a932d33807",
+          "mount": "/scxloader",
+          "usec": 5117754
+        },
+        {
+          "boot_id": "3f901b99-4c5d-480f-afc7-fddba6b98a90",
+          "event": "loader-released",
+          "usec": 6632337
+        },
+        {
+          "boot_id": "3f901b99-4c5d-480f-afc7-fddba6b98a90",
+          "event": "workload-started",
+          "first_usec": 6866260,
+          "usec": 6866260
+        },
+        {
+          "active_enter_usec": 6820815,
+          "boot_id": "3f901b99-4c5d-480f-afc7-fddba6b98a90",
+          "event": "workload-finished",
+          "first_usec": 6866260,
+          "kernel_state": "enabled",
+          "manager": "/opt/scx-replay/da1f73f95625dc4f2e8cf6242c9b314f164e3026/systemd",
+          "ops": "qmap",
+          "usec": 6893746
+        }
+      ],
+      "console_sha256": "797ea0478e26dd9cbb800af548fb678596e0f09532ab114274a8dbb042e745f3",
+      "target": "scxboot.target"
+    },
+    {
+      "case": "missing",
+      "events": [],
+      "console_sha256": "4089392abf0e1c6526d1ce9a0328775972d6dc6ee3f3b5d4dfcc64dc1f388f56",
+      "failure_seconds": 0.099,
+      "timeout_seconds": 8,
+      "diagnostic": [
+        "[    5.399330] (ssing-provider)[304]: scxboot@-.scheduler: scxboot@-.scheduler: Unable to locate executable '/scxloader/missing-provider': No such file or directory",
+        "[    5.399335] (ssing-provider)[304]: scxboot@-.scheduler: scxboot@-.scheduler: Failed at step EXEC spawning /scxloader/missing-provider: No such file or directory",
+        "[FAILED] Failed to start scxboot@-.scheduler.",
+        "[DEPEND] Dependency failed for scxboot-workload.service.",
+        "[DEPEND] Dependency failed for scxboot.target"
+      ],
+      "workload_markers": 0
+    },
+    {
+      "case": "recovery",
+      "events": [
+        {
+          "boot_id": "7cbd2c91-7f3d-4628-bdc6-f0c7760d595e",
+          "event": "workload-started",
+          "first_usec": 5147197,
+          "usec": 5147199
+        },
+        {
+          "active_enter_usec": 0,
+          "boot_id": "7cbd2c91-7f3d-4628-bdc6-f0c7760d595e",
+          "event": "workload-finished",
+          "first_usec": 5147197,
+          "kernel_state": "disabled",
+          "manager": "/opt/scx-replay/da1f73f95625dc4f2e8cf6242c9b314f164e3026/systemd",
+          "ops": "",
+          "usec": 5162869
+        }
+      ],
+      "console_sha256": "b44c7061b02837908a2e131206af1cc299e052d2cc2ee18a2898b00c95505f6a",
+      "recovery": [
+        "initrd-console",
+        "host-root-mounted",
+        "late-root-override",
+        "switch-root"
+      ],
+      "target": "scxboot.target"
+    },
+    {
+      "case": "control",
+      "events": [
+        {
+          "boot_id": "bff027e0-a882-42d0-9803-9520027f378f",
+          "event": "workload-started",
+          "first_usec": 4999413,
+          "usec": 4999414
+        },
+        {
+          "active_enter_usec": 0,
+          "boot_id": "bff027e0-a882-42d0-9803-9520027f378f",
+          "event": "workload-finished",
+          "first_usec": 4999413,
+          "kernel_state": "disabled",
+          "manager": "/opt/scx-replay/da1f73f95625dc4f2e8cf6242c9b314f164e3026/systemd",
+          "ops": "",
+          "usec": 5010819
+        }
+      ],
+      "console_sha256": "73e428c5aace63c0bdea03dbf306c5d84cd71eb6e7ca63b28278b7d88663e5af",
+      "target": "scxboot.target"
+    }
+  ],
+  "root_only": {
+    "kernel": "6.19.10-300.fc44.aarch64",
+    "image_sha256": "55c60a3b80d3616a08705afd0459e75fe9f03c54aba7a46e4002a41a72fa0d5b",
+    "kernel_sha256": "e55a5f9a9177267f58d1e957f58e6b294a4552cfe7cdf72174e686edd6b474da",
+    "kernel_config_sha256": "044be830f7df5cb19c1b38ea42383e1a770b3722efb2b375cc86ac2efcfb2530",
+    "btf_sha256": "cb0803f3e79f65220a56d1633a4328b9092c50cfd0009eb7357f80f84bddad06",
+    "probe": {
+      "hierarchy": "unsupported",
+      "btf": "/sys/kernel/btf/vmlinux"
+    },
+    "manager": "/opt/scx-replay/da1f73f95625dc4f2e8cf6242c9b314f164e3026/systemd",
+    "kernel_config": [
+      "CONFIG_SCHED_CLASS_EXT=y",
+      "CONFIG_DEBUG_INFO_BTF=y"
+    ],
+    "root_state": "active",
+    "root_ops": "simple",
+    "start_exit_status": 1,
+    "diagnostic": "A dependency job for scxneg-workload.service failed. See 'journalctl -xe' for details.",
+    "invocation": "c9f0603e5df14233b901daeabb576f27",
+    "messages": "Failed to start scxnegchild@scxneg.scheduler.\nscxnegchild@scxneg.scheduler: Failed to attach scheduler to scxneg.slice: Operation not supported",
+    "child_state": "failed",
+    "workload_markers": 0,
+    "parent_after": "active",
+    "teardown": "disabled"
+  },
+  "manifest_sha256": "f0af0e41aeddc0e65945a2c6919cc6b68e58a468e0993283e7000c104c9b51fd"
+}

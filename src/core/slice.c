@@ -213,6 +213,12 @@ static int slice_load(Unit *u) {
                         return log_unit_error_errno(u, r < 0 ? r : SYNTHETIC_ERRNO(ENOEXEC),
                                                     "Cannot load Scheduler=%s (state: %s).", scheduler->id,
                                                     unit_load_state_to_string(scheduler->load_state));
+
+                /* The scheduler also references its target. Let GC mark this edge in both
+                 * directions so collecting an idle cycle cannot clear a live slice's binding. */
+                r = unit_add_dependency(u, UNIT_REFERENCES, scheduler, /* add_reference= */ false, UNIT_DEPENDENCY_FILE);
+                if (r < 0)
+                        return r;
         }
 
         return slice_verify(s);
