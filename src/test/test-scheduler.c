@@ -21,7 +21,7 @@
 
 static char **attempts = NULL;
 
-int scheduler_attach(Scheduler *s, int target_fd) {
+static int test_attach(Scheduler *s, int target_fd) {
         Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
         _cleanup_close_ int expected = cg_path_open(ASSERT_PTR(unit_get_cgroup_runtime(target))->cgroup_path);
 
@@ -41,9 +41,15 @@ int scheduler_attach(Scheduler *s, int target_fd) {
         return 0;
 }
 
-void scheduler_detach(Scheduler *s) {
+static void test_stop(Scheduler *s) {
         log_info("Detach %s", UNIT(s)->id);
+        scheduler_set_state(s, SCHEDULER_DEAD);
 }
+
+const SchedulerBackend scheduler_backend = {
+        .attach = test_attach,
+        .stop = test_stop,
+};
 
 static void wait_for_unit(Unit *u, UnitActiveState state) {
         usec_t until = now(CLOCK_MONOTONIC) + 15 * USEC_PER_SEC;

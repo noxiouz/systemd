@@ -1,11 +1,452 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
+#include <fcntl.h>
+#include <linux/bpf.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "sd-event.h"
+
+#include "alloc-util.h"
+#include "cgroup-util.h"
+#include "extract-word.h"
+#include "fd-util.h"
+#include "fileio.h"
+#include "format-util.h"
+#include "iovec-util.h"
+#include "manager.h"
+#include "parse-util.h"
+#include "path-util.h"
+#include "pidref.h"
 #include "scheduler.h"
+#include "socket-util.h"
+#include "special.h"
+#include "stat-util.h"
+#include "string-util.h"
+#include "strv.h"
+#include "virt.h"
 
-int scheduler_attach(Scheduler *s, int target_fd) {
-        /* Admission requires independently verified identity, target, and parent of the attachment. */
-        return -EOPNOTSUPP;
+#define SCX_ROOT "/sys/kernel/sched_ext/root"
+#define SCX_STATUS_INTERVAL (250 * USEC_PER_MSEC)
+#define SCX_STATUS_TIMEOUT (5 * USEC_PER_SEC)
+
+struct SchedulerRuntime {
+        PidRef loader, detacher;
+        int channel, target, link, node;
+        uint64_t target_id;
+        char *target_path, *node_path;
+        sd_event_source *io, *timer;
+        usec_t deadline;
+        bool awaiting_status;
+};
+
+static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata);
+
+static bool backend_live(Scheduler *s) {
+        SchedulerRuntime *rt = s->runtime;
+
+        return rt && rt->node >= 0 && rt->link >= 0 &&
+                inode_same_at(rt->target, NULL, AT_FDCWD, rt->target_path, AT_EMPTY_PATH) > 0 &&
+                inode_same_at(rt->node, NULL, AT_FDCWD, rt->node_path, AT_EMPTY_PATH) > 0 &&
+                faccessat(rt->node, "ops", F_OK, 0) >= 0;
 }
 
-void scheduler_detach(Scheduler *s) {
+static void backend_done(Scheduler *s) {
+        SchedulerRuntime *rt = TAKE_PTR(s->runtime);
+
+        if (!rt)
+                return;
+
+        sd_event_source_disable_unref(rt->io);
+        sd_event_source_disable_unref(rt->timer);
+        safe_close(rt->channel);
+        safe_close(rt->target);
+        safe_close(rt->link);
+        safe_close(rt->node);
+        unit_unwatch_pidref_done(UNIT(s), &rt->loader);
+        unit_unwatch_pidref_done(UNIT(s), &rt->detacher);
+        free(rt->target_path);
+        free(rt->node_path);
+        free(rt);
+        s->link_id = 0;
 }
+
+static void finish_stop(Scheduler *s) {
+        SchedulerRuntime *rt = s->runtime;
+
+        if (rt && (pidref_is_set(&rt->loader) || pidref_is_set(&rt->detacher)))
+                return;
+
+        backend_done(s);
+        scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
+}
+
+static int detach_link(Scheduler *s) {
+        /* struct_ops unregistration can wait for the kernel. Detach only the link returned by this
+         * invocation. BPF_LINK_DETACH also unregisters it when other processes retain duplicate FDs. */
+        SchedulerRuntime *rt = ASSERT_PTR(s->runtime);
+        _cleanup_(pidref_done) PidRef child = PIDREF_NULL;
+        int r;
+
+        r = unit_fork_helper_process(UNIT(s), "(sd-scx-detach)", /* into_cgroup= */ false, &child);
+        if (r < 0)
+                return r;
+        if (r == 0) {
+#ifdef __NR_bpf
+                union bpf_attr attr = { .link_detach.link_fd = rt->link };
+                if (syscall(__NR_bpf, BPF_LINK_DETACH, &attr, sizeof(attr.link_detach)) >= 0 || errno == ENOLINK)
+                        _exit(EXIT_SUCCESS);
+                int error = errno;
+                log_unit_error_errno(UNIT(s), error, "BPF_LINK_DETACH of owned link %u failed: %m", s->link_id);
+                _exit(error > 0 && error < 255 ? error : EXIT_FAILURE);
+#endif
+                _exit(EXIT_FAILURE);
+        }
+
+        r = unit_watch_pidref(UNIT(s), &child, /* exclusive= */ true);
+        if (r < 0)
+                return r;
+        rt->detacher = TAKE_PIDREF(child);
+        return 0;
+}
+
+static void backend_stop(Scheduler *s) {
+        SchedulerRuntime *rt = s->runtime;
+        int r;
+
+        if (!rt)
+                return finish_stop(s);
+
+        rt->io = sd_event_source_disable_unref(rt->io);
+        if (rt->link >= 0 && !pidref_is_set(&rt->detacher)) {
+                r = detach_link(s);
+                if (r < 0)
+                        s->result = log_unit_error_errno(UNIT(s), r, "Cannot start scheduler detach: %m");
+        }
+
+        if (rt->channel >= 0) {
+                (void) send(rt->channel, "Q", 1, MSG_DONTWAIT|MSG_NOSIGNAL);
+                rt->channel = safe_close(rt->channel);
+        }
+
+        /* The provider normally exits on Q or EOF. Kill it if it is still loading or hung. */
+        if (pidref_is_set(&rt->loader)) {
+                r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ true, UNIT(s)->manager->defaults.timeout_stop_usec, dispatch_timer);
+                if (r < 0)
+                        (void) pidref_kill(&rt->loader, SIGKILL);
+        }
+        finish_stop(s);
+}
+
+static void backend_fail(Scheduler *s, int error, const char *reason) {
+        s->result = log_unit_error_errno(UNIT(s), error, "%s: %m", reason);
+        (void) strdup_to(&s->failure_reason, reason);
+        scheduler_set_state(s, SCHEDULER_DETACHING);
+        backend_stop(s);
+}
+
+static void backend_sigchld(Scheduler *s, pid_t pid, int code, int status) {
+        SchedulerRuntime *rt = s->runtime;
+
+        if (!rt)
+                return;
+
+        if (rt->loader.pid == pid) {
+                unit_unwatch_pidref_done(UNIT(s), &rt->loader);
+                if (s->state != SCHEDULER_DETACHING)
+                        return backend_fail(s, -ECHILD, "Scheduler loader exited");
+        } else if (rt->detacher.pid == pid) {
+                unit_unwatch_pidref_done(UNIT(s), &rt->detacher);
+                if (code != CLD_EXITED || status != EXIT_SUCCESS)
+                        s->result = log_unit_error_errno(UNIT(s), code == CLD_EXITED ? status : SYNTHETIC_ERRNO(EIO), "Kernel link detach failed: %m");
+        } else
+                return;
+
+        finish_stop(s);
+}
+
+static int query_status(Scheduler *s) {
+        SchedulerRuntime *rt = ASSERT_PTR(s->runtime);
+        if (send(rt->channel, "S", 1, MSG_DONTWAIT|MSG_NOSIGNAL) < 0)
+                return -errno;
+        rt->awaiting_status = true;
+        /* TimeoutStartSec= applies only to activation. Begin the live response deadline when
+         * a query is actually sent, preserving a shorter window for lost-node reconciliation. */
+        if (s->state == SCHEDULER_ATTACHED)
+                rt->deadline = MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_TIMEOUT));
+        return 0;
+}
+
+static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(userdata));
+        SchedulerRuntime *rt = ASSERT_PTR(s->runtime);
+        int r;
+
+        if (s->state == SCHEDULER_DETACHING) {
+                if (pidref_is_set(&rt->loader))
+                        (void) pidref_kill(&rt->loader, SIGKILL);
+                return 0;
+        }
+
+        if (now(CLOCK_MONOTONIC) >= rt->deadline) {
+                backend_fail(s, -ETIMEDOUT, "Scheduler confirmation timed out");
+                return 0;
+        }
+
+        if (rt->link >= 0 && !rt->awaiting_status) {
+                r = query_status(s);
+                if (r < 0) {
+                        backend_fail(s, r, "Cannot query scheduler loader");
+                        return 0;
+                }
+        }
+
+        r = unit_arm_timer(UNIT(s), &rt->timer, true, SCX_STATUS_INTERVAL, dispatch_timer);
+        if (r < 0)
+                backend_fail(s, r, "Cannot arm scheduler timeout");
+        return 0;
+}
+
+static int verify_link_fd(int fd, uint32_t *ret_id) {
+        char path[STRLEN("/proc/self/fdinfo/") + DECIMAL_STR_MAX(int)];
+        _cleanup_free_ char *type = NULL, *id = NULL;
+        int r;
+
+        xsprintf(path, "/proc/self/fdinfo/%i", fd);
+        r = get_proc_field(path, "link_type", &type);
+        if (r < 0)
+                return r;
+        if (!streq(type, "struct_ops"))
+                return -EBADFD;
+        r = get_proc_field(path, "link_id", &id);
+        if (r < 0)
+                return r;
+        return safe_atou32(id, ret_id);
+}
+
+static int process_packet(Scheduler *s, const char *packet, int *link) {
+        _cleanup_free_ char *event = NULL, *generation = NULL, *target = NULL, *error = NULL, *kind = NULL, *code = NULL;
+        SchedulerRuntime *rt = ASSERT_PTR(s->runtime);
+        int err, exit_kind, r;
+        uint64_t target_id;
+        int64_t exit_code;
+
+        r = extract_many_words(&packet, " ", EXTRACT_DONT_COALESCE_SEPARATORS|EXTRACT_RETAIN_ESCAPE,
+                               &event, &generation, &target, &error, &kind, &code);
+        if (r != 6 || safe_atou64(target, &target_id) < 0 ||
+            safe_atoi(error, &err) < 0 || err < 0 || err > ERRNO_MAX ||
+            safe_atoi(kind, &exit_kind) < 0 || safe_atoi64(code, &exit_code) < 0)
+                return -EBADMSG;
+        if (!streq(generation, UNIT(s)->invocation_id_string))
+                return -ESTALE;
+        if (target_id != rt->target_id)
+                return -EXDEV;
+
+        if (streq(event, "attach")) {
+                if (rt->link >= 0 || err != 0)
+                        return err ? -err : -EBADMSG;
+                if (*link < 0)
+                        return -EBADFD;
+                r = verify_link_fd(*link, &s->link_id);
+                if (r < 0)
+                        return r;
+                rt->link = TAKE_FD(*link);
+        } else if (*link >= 0 || rt->link < 0 || !STR_IN_SET(event, "status", "exit"))
+                return -EBADMSG;
+
+        if (err || exit_kind || streq(event, "exit")) {
+                log_unit_warning(UNIT(s), "Scheduler terminal record (kind=%d, code=%" PRIi64 "): %s", exit_kind, exit_code, strempty(packet));
+                if (!isempty(packet))
+                        (void) strdup_to(&s->failure_reason, packet);
+                return err ? -err : -ECANCELED;
+        }
+
+        if (streq(event, "attach")) {
+                rt->node = open(rt->node_path, O_PATH|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW);
+                if (rt->node < 0)
+                        return -errno;
+
+                /* A directory may have appeared during a subsequently vetoed attachment. Ask the
+                 * provider for the durable exit record after it has returned its actual link. */
+                return query_status(s);
+        }
+
+        if (!rt->awaiting_status)
+                return -EBADMSG;
+        rt->awaiting_status = false;
+        if (!backend_live(s)) {
+                if (s->state != SCHEDULER_ATTACHED)
+                        return -ESTALE;
+
+                /* New admissions already reject this node. Give ops.exit a bounded interval to
+                 * report its durable terminal reason, even if the unsolicited exit packet was lost. */
+                rt->deadline = MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), USEC_PER_SEC));
+                return 0;
+        }
+        for (Unit *p = unit_get_start_scheduler(UNIT(s)); p; p = unit_get_start_scheduler(p))
+                if (!scheduler_is_attached(SCHEDULER(p)))
+                        return -ENOLINK;
+
+        rt->deadline = USEC_INFINITY;
+        scheduler_set_state(s, SCHEDULER_ATTACHED);
+        return 0;
+}
+
+static int dispatch_io(sd_event_source *source, int fd, uint32_t revents, void *userdata) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(userdata));
+        _cleanup_close_ int link = -EBADF;
+        char buf[1537];
+        struct iovec iov = IOVEC_MAKE(buf, sizeof(buf) - 1);
+        ssize_t n;
+        int r;
+
+        n = receive_one_fd_iov(fd, &iov, 1, MSG_DONTWAIT, &link);
+        if (n == -EAGAIN)
+                return 0;
+        if (n < 0)
+                r = (int) n;
+        else if (n == 0 || memchr(buf, 0, n))
+                r = -EBADMSG;
+        else {
+                buf[n] = 0;
+                r = process_packet(s, buf, &link);
+        }
+        if (r < 0) {
+                /* Preserve provider terminal diagnostics across GC of the invocation runtime. */
+                _cleanup_free_ char *reason = TAKE_PTR(s->failure_reason);
+                backend_fail(s, r, reason ?: "Invalid or failed scheduler confirmation");
+        }
+        return 0;
+}
+
+static int spawn_provider(Scheduler *s, int channel, int target, bool root, PidRef *ret) {
+        _cleanup_(exec_params_shallow_clear) ExecParameters params = EXEC_PARAMETERS_INIT(EXEC_PASS_FDS|EXEC_APPLY_SANDBOXING);
+        _cleanup_strv_free_ char **argv = NULL;
+        ExecCommand command = *s->exec_start;
+        int r;
+
+        r = unit_prepare_exec(UNIT(s));
+        if (r < 0)
+                return r;
+        r = unit_set_exec_params(UNIT(s), &params);
+        if (r < 0)
+                return r;
+
+        params.stdin_fd = channel;
+        params.fds = newdup(int, &target, 1);
+        params.fd_names = strv_new("sched-ext-target");
+        if (!params.fds || !params.fd_names)
+                return -ENOMEM;
+        params.n_stashed_fds = 1;
+
+        argv = strv_copy(command.argv);
+        if (!argv)
+                return -ENOMEM;
+        r = strv_extend_many(&argv, UNIT(s)->invocation_id_string, "3", root ? "root" : "child");
+        if (r < 0)
+                return r;
+        command.argv = argv;
+
+        return exec_spawn(UNIT(s), &command, &s->exec_context, &params, s->exec_runtime, &s->cgroup_context, ret);
+}
+
+static int backend_attach(Scheduler *s, int target_fd) {
+        Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
+        _cleanup_close_pair_ int pair[2] = EBADF_PAIR;
+        _cleanup_free_ char *node_path = NULL, *target_path = NULL;
+        struct stat st;
+        int r;
+
+        assert(!s->runtime);
+
+        if (!MANAGER_IS_SYSTEM(u->manager) || detect_container() != VIRTUALIZATION_NONE)
+                return -EOPNOTSUPP;
+        if (fstat(target_fd, &st) < 0)
+                return -errno;
+
+        if (parent) {
+                Scheduler *p = SCHEDULER(parent);
+                if (!scheduler_is_attached(p))
+                        return -ENOLINK;
+                if (faccessat(p->runtime->node, "sub", F_OK, 0) < 0)
+                        return errno == ENOENT ? -EOPNOTSUPP : -errno;
+                if (asprintf(&node_path, "%s/sub/sub-%" PRIu64, p->runtime->node_path, (uint64_t) st.st_ino) < 0)
+                        return -ENOMEM;
+        } else {
+                if (!unit_has_name(target, SPECIAL_ROOT_SLICE))
+                        return -ENOLINK;
+                /* A nested manager's root cgroup cannot represent the host attachment. */
+                r = inode_same_at(target_fd, NULL, AT_FDCWD, "/sys/fs/cgroup", AT_EMPTY_PATH);
+                if (r <= 0)
+                        return r < 0 ? r : -EOPNOTSUPP;
+
+                node_path = strdup(SCX_ROOT);
+                if (!node_path)
+                        return -ENOMEM;
+        }
+
+        if (access(node_path, F_OK) >= 0)
+                return -EBUSY;
+        if (errno != ENOENT)
+                return -errno;
+        r = cg_get_path(ASSERT_PTR(unit_get_cgroup_runtime(target))->cgroup_path, NULL, &target_path);
+        if (r < 0)
+                return r;
+
+        if (socketpair(AF_UNIX, SOCK_SEQPACKET|SOCK_CLOEXEC, 0, pair) < 0)
+                return -errno;
+        r = fd_nonblock(pair[0], true);
+        if (r < 0)
+                return r;
+
+        SchedulerRuntime *rt = new(SchedulerRuntime, 1);
+        if (!rt)
+                return -ENOMEM;
+        *rt = (SchedulerRuntime) {
+                .loader = PIDREF_NULL,
+                .detacher = PIDREF_NULL,
+                .channel = TAKE_FD(pair[0]),
+                .node = -EBADF,
+                .link = -EBADF,
+                .target = -EBADF,
+                .target_id = st.st_ino,
+                .target_path = TAKE_PTR(target_path),
+                .node_path = TAKE_PTR(node_path),
+                .deadline = usec_add(now(CLOCK_MONOTONIC), s->timeout_usec),
+        };
+        s->runtime = rt;
+
+        rt->target = fcntl(target_fd, F_DUPFD_CLOEXEC, 3);
+        if (rt->target < 0) {
+                r = -errno;
+                goto fail;
+        }
+        r = sd_event_add_io(u->manager->event, &rt->io, rt->channel, EPOLLIN, dispatch_io, s);
+        if (r < 0)
+                goto fail;
+        r = unit_arm_timer(u, &rt->timer, true, MIN(s->timeout_usec, SCX_STATUS_INTERVAL), dispatch_timer);
+        if (r < 0)
+                goto fail;
+        r = spawn_provider(s, pair[1], rt->target, !parent, &rt->loader);
+        if (r < 0)
+                goto fail;
+        r = unit_watch_pidref(u, &rt->loader, /* exclusive= */ true);
+        if (r < 0) {
+                (void) pidref_kill(&rt->loader, SIGKILL);
+                goto fail;
+        }
+        return 0;
+
+fail:
+        backend_done(s);
+        return r;
+}
+
+const SchedulerBackend scheduler_backend = {
+        .attach = backend_attach,
+        .stop = backend_stop,
+        .is_live = backend_live,
+        .done = backend_done,
+        .sigchld = backend_sigchld,
+};

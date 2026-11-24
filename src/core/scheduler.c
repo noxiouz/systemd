@@ -15,6 +15,7 @@ static const UnitActiveState state_translation_table[_SCHEDULER_STATE_MAX] = {
         [SCHEDULER_DEAD]      = UNIT_INACTIVE,
         [SCHEDULER_ATTACHING] = UNIT_ACTIVATING,
         [SCHEDULER_ATTACHED]  = UNIT_ACTIVE,
+        [SCHEDULER_DETACHING] = UNIT_DEACTIVATING,
         [SCHEDULER_FAILED]    = UNIT_FAILED,
 };
 
@@ -42,9 +43,24 @@ void scheduler_set_state(Scheduler *s, SchedulerState state) {
         unit_notify(UNIT(s), state_translation_table[old], state_translation_table[state], /* reload_success= */ true);
 }
 
+bool scheduler_is_attached(Scheduler *s) {
+        return s->state == SCHEDULER_ATTACHED && (!scheduler_backend.is_live || scheduler_backend.is_live(s));
+}
+
+static void scheduler_init(Unit *u) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(u));
+
+        s->timeout_usec = u->manager->defaults.timeout_start_usec;
+        s->exec_context.std_output = u->manager->defaults.std_output;
+        s->exec_context.std_error = u->manager->defaults.std_error;
+}
+
 static void scheduler_done(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
 
+        if (scheduler_backend.done)
+                scheduler_backend.done(s);
+        free(s->failure_reason);
         exec_command_free_list(s->exec_start);
         unit_ref_unset(&s->target_slice);
 }
@@ -88,6 +104,13 @@ static int scheduler_load(Unit *u) {
         if (declared && declared != u)
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOEXEC), "%s declares Scheduler=%s.", name, declared->id);
 
+        r = unit_patch_contexts(u);
+        if (r < 0)
+                return r;
+        r = unit_set_default_slice(u);
+        if (r < 0)
+                return r;
+
         /* The target cgroup must exist independently of its scheduler, including at the perpetual root. */
         r = unit_add_two_dependencies(u, UNIT_AFTER, UNIT_REQUIRES, target, /* add_reference= */ true, UNIT_DEPENDENCY_IMPLICIT);
         if (r < 0)
@@ -129,9 +152,16 @@ static int scheduler_start(Unit *u) {
         if (fd < 0)
                 return log_unit_error_errno(u, fd, "Cannot open target cgroup of %s: %m", target->id);
 
+        r = unit_acquire_invocation_id(u);
+        if (r < 0)
+                return r;
+
+        s->result = 0;
+        s->failure_reason = mfree(s->failure_reason);
         scheduler_set_state(s, SCHEDULER_ATTACHING);
-        r = scheduler_attach(s, fd);
+        r = scheduler_backend.attach(s, fd);
         if (r < 0) {
+                s->result = r;
                 scheduler_set_state(s, SCHEDULER_FAILED);
                 return log_unit_error_errno(u, r, "Failed to attach scheduler to %s: %m", target->id);
         }
@@ -142,9 +172,24 @@ static int scheduler_start(Unit *u) {
 static int scheduler_stop(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
 
-        scheduler_detach(s);
-        scheduler_set_state(s, SCHEDULER_DEAD);
+        scheduler_set_state(s, SCHEDULER_DETACHING);
+        scheduler_backend.stop(s);
         return 1;
+}
+
+static void scheduler_sigchld(Unit *u, pid_t pid, int code, int status) {
+        if (scheduler_backend.sigchld)
+                scheduler_backend.sigchld(SCHEDULER(u), pid, code, status);
+}
+
+static void scheduler_reset_failed(Unit *u) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(u));
+
+        if (s->state == SCHEDULER_FAILED) {
+                s->result = 0;
+                s->failure_reason = mfree(s->failure_reason);
+                scheduler_set_state(s, SCHEDULER_DEAD);
+        }
 }
 
 static UnitActiveState scheduler_active_state(Unit *u) {
@@ -156,6 +201,7 @@ static const char* scheduler_sub_state_to_string(Unit *u) {
                 [SCHEDULER_DEAD]      = "dead",
                 [SCHEDULER_ATTACHING] = "attaching",
                 [SCHEDULER_ATTACHED]  = "attached",
+                [SCHEDULER_DETACHING] = "detaching",
                 [SCHEDULER_FAILED]    = "failed",
         };
 
@@ -164,6 +210,13 @@ static const char* scheduler_sub_state_to_string(Unit *u) {
 
 const UnitVTable scheduler_vtable = {
         .object_size = sizeof(Scheduler),
+        .exec_context_offset = offsetof(Scheduler, exec_context),
+        .cgroup_context_offset = offsetof(Scheduler, cgroup_context),
+        .exec_runtime_offset = offsetof(Scheduler, exec_runtime),
+        .cgroup_runtime_offset = offsetof(Scheduler, cgroup_runtime),
+        .init = scheduler_init,
+        .sigchld_event = scheduler_sigchld,
+        .reset_failed = scheduler_reset_failed,
         .sections = "Unit\0" "Scheduler\0" "Install\0",
         .done = scheduler_done,
         .load = scheduler_load,
