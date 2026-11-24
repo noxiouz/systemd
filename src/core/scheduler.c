@@ -3,12 +3,17 @@
 #include "alloc-util.h"
 #include "cgroup-util.h"
 #include "dbus-unit.h"
+#include "escape.h"
 #include "fd-util.h"
 #include "manager.h"
+#include "parse-util.h"
 #include "path-util.h"
 #include "scheduler.h"
+#include "serialize.h"
 #include "slice.h"
 #include "special.h"
+#include "string-table.h"
+#include "string-util.h"
 #include "unit-name.h"
 
 static const UnitActiveState state_translation_table[_SCHEDULER_STATE_MAX] = {
@@ -24,12 +29,34 @@ Unit* unit_get_start_scheduler(Unit *u) {
                 return slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(u)));
 
         if (u->type == UNIT_SCHEDULER) {
-                Unit *target = UNIT_DEREF(SCHEDULER(u)->target_slice);
+                Scheduler *s = SCHEDULER(u);
+                if (s->runtime)
+                        return UNIT_DEREF(s->runtime_parent);
+
+                Unit *target = UNIT_DEREF(s->target_slice);
                 if (target)
                         return slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(target)));
         }
 
         return NULL;
+}
+
+int unit_set_scheduler_dependencies(Unit *u, Unit *parent) {
+        assert(parent);
+
+        UnitDependencyInfo previous = { .data = hashmap_get(unit_get_dependencies(u, UNIT_AFTER), parent) };
+        if (FLAGS_SET(previous.origin_mask, UNIT_DEPENDENCY_SCHEDULER) &&
+            (u->type != UNIT_SCHEDULER || hashmap_contains(unit_get_dependencies(u, UNIT_PART_OF), parent)))
+                return 0;
+
+        /* A reload can change the parent of the next start while the previous attachment remains live.
+         * Keep the old ordering through stop; replace it when admitting the new invocation. */
+        unit_remove_dependencies(u, UNIT_DEPENDENCY_SCHEDULER);
+        if (u->type == UNIT_SCHEDULER)
+                return unit_add_two_dependencies(u, UNIT_AFTER, UNIT_PART_OF, parent,
+                                                 /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+
+        return unit_add_dependency(u, UNIT_AFTER, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
 }
 
 void scheduler_set_state(Scheduler *s, SchedulerState state) {
@@ -196,16 +223,56 @@ static UnitActiveState scheduler_active_state(Unit *u) {
         return state_translation_table[SCHEDULER(u)->state];
 }
 
-static const char* scheduler_sub_state_to_string(Unit *u) {
-        static const char *const table[_SCHEDULER_STATE_MAX] = {
-                [SCHEDULER_DEAD]      = "dead",
-                [SCHEDULER_ATTACHING] = "attaching",
-                [SCHEDULER_ATTACHED]  = "attached",
-                [SCHEDULER_DETACHING] = "detaching",
-                [SCHEDULER_FAILED]    = "failed",
-        };
+static const char *const scheduler_state_table[_SCHEDULER_STATE_MAX] = {
+        [SCHEDULER_DEAD]      = "dead",
+        [SCHEDULER_ATTACHING] = "attaching",
+        [SCHEDULER_ATTACHED]  = "attached",
+        [SCHEDULER_DETACHING] = "detaching",
+        [SCHEDULER_FAILED]    = "failed",
+};
 
-        return table[SCHEDULER(u)->state];
+DEFINE_PRIVATE_STRING_TABLE_LOOKUP(scheduler_state, SchedulerState);
+
+static const char* scheduler_sub_state_to_string(Unit *u) {
+        return scheduler_state_to_string(SCHEDULER(u)->state);
+}
+
+static int scheduler_serialize(Unit *u, FILE *f, FDSet *fds) {
+        Scheduler *s = SCHEDULER(u);
+
+        (void) serialize_item(f, "state", scheduler_state_to_string(s->state));
+        (void) serialize_item_format(f, "scheduler-result", "%d", s->result);
+        (void) serialize_item_escaped(f, "scheduler-failure", s->failure_reason);
+        return scheduler_backend.serialize ? scheduler_backend.serialize(s, f, fds) : 0;
+}
+
+static int scheduler_deserialize_item(Unit *u, const char *key, const char *value, FDSet *fds) {
+        Scheduler *s = SCHEDULER(u);
+
+        if (streq(key, "state")) {
+                SchedulerState state = scheduler_state_from_string(value);
+                if (state >= 0)
+                        s->deserialized_state = state;
+                return 0;
+        }
+        if (streq(key, "scheduler-result"))
+                return safe_atoi(value, &s->result);
+        if (streq(key, "scheduler-failure"))
+                return cunescape(value, 0, &s->failure_reason);
+
+        return scheduler_backend.deserialize ? scheduler_backend.deserialize(s, key, value, fds) : 0;
+}
+
+static int scheduler_coldplug(Unit *u) {
+        Scheduler *s = SCHEDULER(u);
+
+        if (IN_SET(s->deserialized_state, SCHEDULER_DEAD, SCHEDULER_FAILED)) {
+                scheduler_set_state(s, s->deserialized_state);
+                return 0;
+        }
+        if (scheduler_backend.coldplug)
+                return scheduler_backend.coldplug(s);
+        return -EOPNOTSUPP;
 }
 
 const UnitVTable scheduler_vtable = {
@@ -220,6 +287,9 @@ const UnitVTable scheduler_vtable = {
         .sections = "Unit\0" "Scheduler\0" "Install\0",
         .done = scheduler_done,
         .load = scheduler_load,
+        .serialize = scheduler_serialize,
+        .deserialize_item = scheduler_deserialize_item,
+        .coldplug = scheduler_coldplug,
         .start = scheduler_start,
         .stop = scheduler_stop,
         .can_fail = true,

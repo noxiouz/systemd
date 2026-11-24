@@ -89,6 +89,9 @@ def proxy(binary, directory, generation, fd, role):
                         release.callback(os.close, descriptor)
                     if not data:
                         return
+                    if data.startswith(b'status ') and fault == 'delay-status':
+                        (directory / 'status-held').touch()
+                        wait_for(lambda: (directory / 'release').exists(), 'release status')
                     if data.startswith(b'attach ') and role == 'child':
                         (directory / 'received').write_text(generation)
                         if fault == 'die':

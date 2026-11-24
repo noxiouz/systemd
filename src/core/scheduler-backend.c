@@ -10,6 +10,7 @@
 
 #include "alloc-util.h"
 #include "cgroup-util.h"
+#include "errno-util.h"
 #include "extract-word.h"
 #include "fd-util.h"
 #include "fileio.h"
@@ -20,6 +21,7 @@
 #include "path-util.h"
 #include "pidref.h"
 #include "scheduler.h"
+#include "serialize.h"
 #include "socket-util.h"
 #include "special.h"
 #include "stat-util.h"
@@ -38,7 +40,7 @@ struct SchedulerRuntime {
         char *target_path, *node_path;
         sd_event_source *io, *timer;
         usec_t deadline;
-        bool awaiting_status;
+        bool awaiting_status, reconciling;
 };
 
 static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata);
@@ -62,6 +64,7 @@ static bool backend_live(Scheduler *s) {
 static void backend_done(Scheduler *s) {
         SchedulerRuntime *rt = TAKE_PTR(s->runtime);
 
+        unit_ref_unset(&s->runtime_parent);
         if (!rt)
                 return;
 
@@ -139,7 +142,8 @@ static void backend_stop(Scheduler *s) {
 
         /* The provider normally exits on Q or EOF. Kill it if it is still loading or hung. */
         if (pidref_is_set(&rt->loader)) {
-                r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ true, UNIT(s)->manager->defaults.timeout_stop_usec, dispatch_timer);
+                rt->deadline = usec_add(now(CLOCK_MONOTONIC), UNIT(s)->manager->defaults.timeout_stop_usec);
+                r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ false, rt->deadline, dispatch_timer);
                 if (r < 0)
                         (void) pidref_kill(&rt->loader, SIGKILL);
         }
@@ -284,7 +288,7 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
                 return -EBADMSG;
         rt->awaiting_status = false;
         if (!backend_live(s)) {
-                if (s->state != SCHEDULER_ATTACHED)
+                if (s->state != SCHEDULER_ATTACHED && !rt->reconciling)
                         return -ESTALE;
 
                 /* New admissions already reject this node. Give ops.exit a bounded interval to
@@ -293,9 +297,15 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
                 return 0;
         }
         for (Unit *p = unit_get_start_scheduler(UNIT(s)); p; p = unit_get_start_scheduler(p))
-                if (!scheduler_is_attached(SCHEDULER(p)))
+                if (!scheduler_is_attached(SCHEDULER(p))) {
+                        /* Coldplug order is independent of hierarchy. A child with healthy
+                         * evidence waits for its parent's outstanding confirmation. */
+                        if (rt->reconciling && SCHEDULER(p)->state == SCHEDULER_ATTACHING)
+                                return 0;
                         return -ENOLINK;
+                }
 
+        rt->reconciling = false;
         rt->deadline = USEC_INFINITY;
         scheduler_set_state(s, SCHEDULER_ATTACHED);
         return 0;
@@ -359,6 +369,25 @@ static int spawn_provider(Scheduler *s, int channel, int target, bool root, PidR
         return exec_spawn(UNIT(s), &command, &s->exec_context, &params, s->exec_runtime, &s->cgroup_context, ret);
 }
 
+static int ensure_runtime(Scheduler *s) {
+        if (s->runtime)
+                return 0;
+
+        s->runtime = new(SchedulerRuntime, 1);
+        if (!s->runtime)
+                return -ENOMEM;
+        *s->runtime = (SchedulerRuntime) {
+                .loader = PIDREF_NULL,
+                .detacher = PIDREF_NULL,
+                .channel = -EBADF,
+                .node = -EBADF,
+                .link = -EBADF,
+                .target = -EBADF,
+                .deadline = USEC_INFINITY,
+        };
+        return 0;
+}
+
 static int backend_attach(Scheduler *s, int target_fd) {
         Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
         _cleanup_close_pair_ int pair[2] = EBADF_PAIR;
@@ -408,22 +437,17 @@ static int backend_attach(Scheduler *s, int target_fd) {
         if (r < 0)
                 return r;
 
-        SchedulerRuntime *rt = new(SchedulerRuntime, 1);
-        if (!rt)
-                return -ENOMEM;
-        *rt = (SchedulerRuntime) {
-                .loader = PIDREF_NULL,
-                .detacher = PIDREF_NULL,
-                .channel = TAKE_FD(pair[0]),
-                .node = -EBADF,
-                .link = -EBADF,
-                .target = -EBADF,
-                .target_id = st.st_ino,
-                .target_path = TAKE_PTR(target_path),
-                .node_path = TAKE_PTR(node_path),
-                .deadline = usec_add(now(CLOCK_MONOTONIC), s->timeout_usec),
-        };
-        s->runtime = rt;
+        r = ensure_runtime(s);
+        if (r < 0)
+                return r;
+        SchedulerRuntime *rt = s->runtime;
+        rt->channel = TAKE_FD(pair[0]);
+        rt->target_id = st.st_ino;
+        rt->target_path = TAKE_PTR(target_path);
+        rt->node_path = TAKE_PTR(node_path);
+        rt->deadline = usec_add(now(CLOCK_MONOTONIC), s->timeout_usec);
+        if (parent)
+                unit_ref_set(&s->runtime_parent, u, parent);
 
         rt->target = fcntl(target_fd, F_DUPFD_CLOEXEC, 3);
         if (rt->target < 0) {
@@ -451,7 +475,156 @@ fail:
         return r;
 }
 
+static int backend_serialize(Scheduler *s, FILE *f, FDSet *fds) {
+        SchedulerRuntime *rt = s->runtime;
+        if (!rt)
+                return 0;
+
+        /* The socket preserves both its pending packets and their SCM_RIGHTS descriptors.
+         * Duplicating the link and both directory pins keeps the exact invocation reachable. */
+        int r = 0;
+        RET_GATHER(r, serialize_fd(f, fds, "scx-channel", rt->channel));
+        RET_GATHER(r, serialize_fd(f, fds, "scx-target", rt->target));
+        RET_GATHER(r, serialize_fd(f, fds, "scx-node", rt->node));
+        RET_GATHER(r, serialize_fd(f, fds, "scx-link", rt->link));
+        RET_GATHER(r, serialize_pidref(f, fds, "scx-loader", &rt->loader));
+        RET_GATHER(r, serialize_pidref(f, fds, "scx-detacher", &rt->detacher));
+        RET_GATHER(r, serialize_item(f, "scx-target-path", rt->target_path));
+        RET_GATHER(r, serialize_item(f, "scx-node-path", rt->node_path));
+        RET_GATHER(r, serialize_usec(f, "scx-deadline", rt->deadline));
+        RET_GATHER(r, serialize_bool(f, "scx-awaiting-status", rt->awaiting_status));
+        if (UNIT_ISSET(s->runtime_parent))
+                RET_GATHER(r, serialize_item(f, "scx-parent", UNIT_DEREF(s->runtime_parent)->id));
+        return r;
+}
+
+static int backend_deserialize(Scheduler *s, const char *key, const char *value, FDSet *fds) {
+        if (!startswith(key, "scx-"))
+                return 0;
+
+        int r = ensure_runtime(s);
+        if (r < 0)
+                return r;
+        SchedulerRuntime *rt = s->runtime;
+        int *fd;
+
+        if (streq(key, "scx-channel"))
+                fd = &rt->channel;
+        else if (streq(key, "scx-target"))
+                fd = &rt->target;
+        else if (streq(key, "scx-node"))
+                fd = &rt->node;
+        else if (streq(key, "scx-link"))
+                fd = &rt->link;
+        else if (streq(key, "scx-loader"))
+                return deserialize_pidref(fds, value, &rt->loader);
+        else if (streq(key, "scx-detacher"))
+                return deserialize_pidref(fds, value, &rt->detacher);
+        else if (streq(key, "scx-target-path"))
+                return strdup_to(&rt->target_path, value);
+        else if (streq(key, "scx-node-path"))
+                return strdup_to(&rt->node_path, value);
+        else if (streq(key, "scx-deadline"))
+                return deserialize_usec(value, &rt->deadline);
+        else if (streq(key, "scx-awaiting-status")) {
+                r = parse_boolean(value);
+                if (r >= 0)
+                        rt->awaiting_status = r;
+                return r;
+        } else if (streq(key, "scx-parent")) {
+                Unit *parent;
+                r = manager_load_unit(UNIT(s)->manager, value, NULL, NULL, &parent);
+                if (r < 0)
+                        return r;
+                if (parent->type != UNIT_SCHEDULER || parent == UNIT(s))
+                        return -EINVAL;
+                unit_ref_set(&s->runtime_parent, UNIT(s), parent);
+                return 0;
+        } else
+                return 0;
+
+        if (*fd >= 0)
+                return -EEXIST;
+        *fd = deserialize_fd(fds, value);
+        return *fd < 0 ? *fd : 0;
+}
+
+static int backend_coldplug(Scheduler *s) {
+        SchedulerRuntime *rt = s->runtime;
+        Unit *u = UNIT(s), *parent = UNIT_DEREF(s->runtime_parent);
+        struct stat st;
+        int r;
+
+        if (!rt) {
+                r = -ENODATA;
+                goto fail;
+        }
+        if (pidref_is_set(&rt->loader)) {
+                r = unit_watch_pidref(u, &rt->loader, true);
+                if (r < 0)
+                        goto fail;
+        }
+        if (pidref_is_set(&rt->detacher)) {
+                r = unit_watch_pidref(u, &rt->detacher, true);
+                if (r < 0)
+                        goto fail;
+        }
+        if (rt->link >= 0) {
+                r = verify_link_fd(rt->link, &s->link_id);
+                if (r < 0)
+                        goto fail;
+        }
+        if (parent) {
+                r = unit_set_scheduler_dependencies(u, parent);
+                if (r < 0)
+                        goto fail;
+        }
+
+        if (s->deserialized_state == SCHEDULER_DETACHING) {
+                scheduler_set_state(s, SCHEDULER_DETACHING);
+                if (!pidref_is_set(&rt->loader) && !pidref_is_set(&rt->detacher))
+                        finish_stop(s);
+                else if (pidref_is_set(&rt->loader))
+                        return unit_arm_timer(u, &rt->timer, false, rt->deadline, dispatch_timer);
+                return 0;
+        }
+
+        if (rt->channel < 0 || rt->target < 0 || !rt->node_path || !rt->target_path || !pidref_is_set(&rt->loader)) {
+                r = -ENODATA;
+                goto fail;
+        }
+        if (fstat(rt->target, &st) < 0) {
+                r = -errno;
+                goto fail;
+        }
+        rt->target_id = st.st_ino;
+        rt->reconciling = true;
+        if (s->deserialized_state == SCHEDULER_ATTACHED)
+                rt->deadline = MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_TIMEOUT));
+        scheduler_set_state(s, SCHEDULER_ATTACHING);
+
+        r = sd_event_add_io(u->manager->event, &rt->io, rt->channel, EPOLLIN, dispatch_io, s);
+        if (r < 0)
+                goto fail;
+        if (rt->link >= 0 && !rt->awaiting_status) {
+                r = query_status(s);
+                if (r < 0)
+                        goto fail;
+        }
+        r = unit_arm_timer(u, &rt->timer, false, MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_INTERVAL)), dispatch_timer);
+        if (r < 0)
+                goto fail;
+        return 0;
+
+fail:
+        backend_fail(s, r, "Cannot restore scheduler invocation");
+        return r;
+}
+
 const SchedulerBackend scheduler_backend = {
+        .serialize = backend_serialize,
+        .deserialize = backend_deserialize,
+        .coldplug = backend_coldplug,
         .attach = backend_attach,
         .stop = backend_stop,
         .is_live = backend_live,

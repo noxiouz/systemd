@@ -83,3 +83,16 @@ leaf and root eviction, compares the effective unit property with the observed
 fallback, and checks that new service commands wait for recovery. Installing an
 intermediate slice declaration above a live attachment must return `EBUSY`
 while the original child remains attached to its parent.
+
+## Reload and manager reexecution
+
+Run `python3 test/scx/reexecution.py /absolute/path/to/identity-provider` as root on the
+reference guest. It records four independent link and cgroup identities, the providers' launch
+counts, a running workload PID and journal results for delayed and evicted attachments across
+three PID 1 reexecutions.
+
+The system manager transfers the private provider socket, its link, the target cgroup and
+scheduler directory descriptors, and outstanding process watches across reload and reexecution.
+While restoring an invocation it checks fresh kernel and provider evidence before admission.
+A changed slice declaration takes effect for future attachments. To apply it to a live branch,
+stop the superseded instance, then start the newly selected instance and its required children.

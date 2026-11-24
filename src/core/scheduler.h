@@ -12,6 +12,7 @@ typedef enum SchedulerState {
         SCHEDULER_DETACHING,
         SCHEDULER_FAILED,
         _SCHEDULER_STATE_MAX,
+        _SCHEDULER_STATE_INVALID = -EINVAL,
 } SchedulerState;
 
 typedef struct SchedulerRuntime SchedulerRuntime;
@@ -19,9 +20,9 @@ typedef struct SchedulerRuntime SchedulerRuntime;
 typedef struct Scheduler {
         Unit meta;
 
-        SchedulerState state;
+        SchedulerState state, deserialized_state;
         ExecCommand *exec_start;
-        UnitRef target_slice;
+        UnitRef target_slice, runtime_parent;
         usec_t timeout_usec;
         int result;
         uint32_t link_id;
@@ -39,11 +40,15 @@ extern const UnitVTable scheduler_vtable;
 DEFINE_CAST(SCHEDULER, Scheduler);
 
 Unit* unit_get_start_scheduler(Unit *u);
+int unit_set_scheduler_dependencies(Unit *u, Unit *parent);
 void scheduler_set_state(Scheduler *s, SchedulerState state);
 typedef struct SchedulerBackend {
         int (*attach)(Scheduler *s, int target_fd);
         void (*stop)(Scheduler *s);
         void (*done)(Scheduler *s);
+        int (*serialize)(Scheduler *s, FILE *f, FDSet *fds);
+        int (*deserialize)(Scheduler *s, const char *key, const char *value, FDSet *fds);
+        int (*coldplug)(Scheduler *s);
         bool (*is_live)(Scheduler *s);
         bool (*owns_node)(Scheduler *s, const char *path);
         void (*sigchld)(Scheduler *s, pid_t pid, int code, int status);

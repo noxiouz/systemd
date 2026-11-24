@@ -1151,13 +1151,7 @@ int transaction_add_job_and_dependencies(
                  * this transaction, without establishing stop propagation to already running workloads. */
                 Unit *scheduler = unit_get_start_scheduler(unit);
                 if (scheduler) {
-                        /* A planned stop or restart of a scheduler also applies to its active children.
-                         * A service only waits for admission and keeps running across those operations. */
-                        if (unit->type == UNIT_SCHEDULER)
-                                r = unit_add_two_dependencies(unit, UNIT_AFTER, UNIT_PART_OF, scheduler,
-                                                              /* add_reference= */ false, UNIT_DEPENDENCY_SLICE_PROPERTY);
-                        else
-                                r = unit_add_dependency(unit, UNIT_AFTER, scheduler, /* add_reference= */ false, UNIT_DEPENDENCY_SLICE_PROPERTY);
+                        r = unit_set_scheduler_dependencies(unit, scheduler);
                         if (r < 0)
                                 goto fail;
 
