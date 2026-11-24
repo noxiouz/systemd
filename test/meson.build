@@ -480,6 +480,8 @@ if install_tests
                 install_data(integration_test_unit, install_dir : testdata_dir / 'units')
         endforeach
 
+        install_data('scx/baseline.py', install_dir : testdata_dir / 'scx')
+
         testdata_subdirs = [
                 'auxv',
                 'journal-data',
