@@ -21,6 +21,7 @@
 #include "dbus-manager.h"
 #include "dbus-mount.h"
 #include "dbus-path.h"
+#include "dbus-scheduler.h"
 #include "dbus-scope.h"
 #include "dbus-service.h"
 #include "dbus-slice.h"
@@ -493,16 +494,15 @@ static const BusObjectImplementation bus_path_object = {
                 { bus_path_vtable,        bus_unit_interface_find }),
 };
 
-static const sd_bus_vtable bus_scheduler_vtable[] = {
-        SD_BUS_VTABLE_START(0),
-        SD_BUS_VTABLE_END
-};
-
 static const BusObjectImplementation bus_scheduler_object = {
         "/org/freedesktop/systemd1/unit",
         "org.freedesktop.systemd1.Scheduler",
         .fallback_vtables = BUS_FALLBACK_VTABLES(
-                { bus_scheduler_vtable,   bus_unit_interface_find }),
+                { bus_scheduler_vtable,   bus_unit_interface_find },
+                { bus_unit_cgroup_vtable, bus_unit_cgroup_find },
+                { bus_cgroup_vtable,      bus_cgroup_context_find },
+                { bus_exec_vtable,        bus_exec_context_find },
+                { bus_unit_exec_vtable,   bus_unit_exec_context_find }),
 };
 
 static const BusObjectImplementation bus_scope_object = {

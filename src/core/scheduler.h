@@ -45,6 +45,7 @@ typedef struct SchedulerBackend {
         void (*stop)(Scheduler *s);
         void (*done)(Scheduler *s);
         bool (*is_live)(Scheduler *s);
+        bool (*owns_node)(Scheduler *s, const char *path);
         void (*sigchld)(Scheduler *s, pid_t pid, int code, int status);
 } SchedulerBackend;
 

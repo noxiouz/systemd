@@ -43,12 +43,19 @@ struct SchedulerRuntime {
 
 static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata);
 
+static bool backend_owns_node(Scheduler *s, const char *path) {
+        SchedulerRuntime *rt = s->runtime;
+
+        return rt && rt->node >= 0 &&
+                inode_same_at(rt->node, NULL, AT_FDCWD, path, AT_EMPTY_PATH) > 0;
+}
+
 static bool backend_live(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
 
         return rt && rt->node >= 0 && rt->link >= 0 &&
                 inode_same_at(rt->target, NULL, AT_FDCWD, rt->target_path, AT_EMPTY_PATH) > 0 &&
-                inode_same_at(rt->node, NULL, AT_FDCWD, rt->node_path, AT_EMPTY_PATH) > 0 &&
+                backend_owns_node(s, rt->node_path) &&
                 faccessat(rt->node, "ops", F_OK, 0) >= 0;
 }
 
@@ -256,9 +263,10 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
                 return -EBADMSG;
 
         if (err || exit_kind || streq(event, "exit")) {
-                log_unit_warning(UNIT(s), "Scheduler terminal record (kind=%d, code=%" PRIi64 "): %s", exit_kind, exit_code, strempty(packet));
-                if (!isempty(packet))
-                        (void) strdup_to(&s->failure_reason, packet);
+                _cleanup_free_ char *reason = NULL;
+                if (asprintf(&reason, "Scheduler terminal record (kind=%d, code=%" PRIi64 ")%s%s",
+                             exit_kind, exit_code, isempty(packet) ? "" : ": ", strempty(packet)) >= 0)
+                        free_and_replace(s->failure_reason, reason);
                 return err ? -err : -ECANCELED;
         }
 
@@ -447,6 +455,7 @@ const SchedulerBackend scheduler_backend = {
         .attach = backend_attach,
         .stop = backend_stop,
         .is_live = backend_live,
+        .owns_node = backend_owns_node,
         .done = backend_done,
         .sigchld = backend_sigchld,
 };

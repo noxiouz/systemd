@@ -48,3 +48,19 @@ struct-ops link via SCM_RIGHTS and reports its durable exit record in response t
 queries. PID 1 checks the kernel tree, cgroup and instance identities and retains the link.
 `TimeoutStartSec=` bounds confirmation. Stop explicitly detaches the owned link in a helper
 process, even when another process holds its own descriptor.
+
+## Inspecting schedulers and slices
+
+Use `systemctl list-units --type=scheduler --all` to enumerate managed scheduler instances.
+The scheduler's status shows its target slice, parent scheduler and the diagnostic from its
+most recent failure. `systemctl show` also exposes its current owned struct-ops `LinkID`.
+On a slice, `Scheduler` names the local declaration and `ConfiguredScheduler` resolves the
+closest declaration, including inherited ones. `EffectiveScheduler` checks the current kernel
+tree and reports an instance name for a confirmed manager-owned attachment, `kernel` when
+sched_ext is disabled, `foreign` for an unowned attachment, `inactive` for an inactive slice
+while sched_ext is enabled, or `unknown` while identity cannot be confirmed. A provider
+algorithm name alone cannot establish ownership.
+
+Run `python3 test/scx/observability.py /absolute/path/to/identity-provider` as root on the same
+disposable guest to compare D-Bus and systemctl output with the kernel tree throughout managed
+operation, forced eviction and attachment of a different instance of the same algorithm.

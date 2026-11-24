@@ -43,6 +43,7 @@ libcore_sources = files(
         'dbus-manager.c',
         'dbus-mount.c',
         'dbus-path.c',
+        'dbus-scheduler.c',
         'dbus-scope.c',
         'dbus-service.c',
         'dbus-slice.c',

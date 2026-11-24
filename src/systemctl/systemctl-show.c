@@ -273,6 +273,11 @@ typedef struct UnitStatusInfo {
         /* Swap */
         const char *what;
 
+        /* Scheduler */
+        const char *target_slice;
+        const char *parent_scheduler;
+        const char *scheduler_failure;
+
         /* Slice */
         unsigned concurrency_hard_max;
         unsigned concurrency_soft_max;
@@ -614,6 +619,12 @@ static void print_status_info(
 
         if (i->sysfs_path)
                 printf("     Device: %s\n", i->sysfs_path);
+        if (!isempty(i->target_slice))
+                printf("     Target: %s\n", i->target_slice);
+        if (!isempty(i->parent_scheduler))
+                printf("     Parent: %s\n", i->parent_scheduler);
+        if (!isempty(i->scheduler_failure))
+                printf("    Failure: %s\n", i->scheduler_failure);
         if (i->where)
                 printf("      Where: %s\n", i->where);
         if (i->what)
@@ -2286,6 +2297,9 @@ static int show_one(
                 { "Accept",                         "b",               NULL,           offsetof(UnitStatusInfo, accept)                            },
                 { "Listen",                         "a(ss)",           map_listen,     offsetof(UnitStatusInfo, listen)                            },
                 { "SysFSPath",                      "s",               NULL,           offsetof(UnitStatusInfo, sysfs_path)                        },
+                { "TargetSlice",                    "s",               NULL,           offsetof(UnitStatusInfo, target_slice)                      },
+                { "ParentScheduler",                "s",               NULL,           offsetof(UnitStatusInfo, parent_scheduler)                  },
+                { "FailureReason",                  "s",               NULL,           offsetof(UnitStatusInfo, scheduler_failure)                 },
                 { "Where",                          "s",               NULL,           offsetof(UnitStatusInfo, where)                             },
                 { "What",                           "s",               NULL,           offsetof(UnitStatusInfo, what)                              },
                 { "ConcurrencyHardMax",             "u",               NULL,           offsetof(UnitStatusInfo, concurrency_hard_max)              },
