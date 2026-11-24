@@ -64,3 +64,22 @@ algorithm name alone cannot establish ownership.
 Run `python3 test/scx/observability.py /absolute/path/to/identity-provider` as root on the same
 disposable guest to compare D-Bus and systemctl output with the kernel tree throughout managed
 operation, forced eviction and attachment of a different instance of the same algorithm.
+
+## Branch restart and recovery
+
+On the reference Linux VM with the prototype installed as PID 1 and its matching
+`systemctl` on PATH, run the following command from the source tree. Pass the
+absolute mixed-provider build directory produced by the SCX test recipe.
+
+```sh
+python3 test/scx/branch.py /var/tmp/scx-mixed-build >scx-branch.json
+```
+
+Restarting a parent scheduler restarts its active descendants through the unit
+transaction. The kernel's `sched_ext_exit` tracepoint records leaf-first detach.
+While a fresh parent loader is held before attachment, the test reads the
+independent sibling's BPF link ID and per-task dispatch count. It also exercises
+leaf and root eviction, compares the effective unit property with the observed
+fallback, and checks that new service commands wait for recovery. Installing an
+intermediate slice declaration above a live attachment must return `EBUSY`
+while the original child remains attached to its parent.
