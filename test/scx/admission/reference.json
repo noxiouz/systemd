@@ -1,0 +1,828 @@
+{
+  "kernel": "7.3.5+deb14-cloud-arm64",
+  "manager": "s \"263~devel\"",
+  "binaries": {
+    "identity-provider": "3ab745c601715918408a81818d542615267ef85fdc394596f9e6b87e8e6a7f5c",
+    "fifo-provider": "bfaae93e359867f1cda4c138d5e9dfd686f0da1785149cf37f9780363fde557e",
+    "admission-exec.bpf.o": "db0d70878d2af8bfad6d3612440e9399666c01c71b4520aba0713807ed527942"
+  },
+  "script_sha256": "761d3814925fbebdd9bb3c836ff8ea0cd720148e811ab294b7dc0ac99bb82ee8",
+  "concurrent_starts": {
+    "interactive": {
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 815921852152,
+          "pid": 12922,
+          "level": 1,
+          "nodes": [
+            20605,
+            20615
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 815923897322,
+          "pid": 12923,
+          "level": 1,
+          "nodes": [
+            20605,
+            20615
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 815925796866,
+          "pid": 12925,
+          "level": 1,
+          "nodes": [
+            20605,
+            20615
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07interactive.scheduler",
+          "target": 9897,
+          "inode": 20615,
+          "ops": "qmap",
+          "active_us": 815904847
+        }
+      ]
+    },
+    "before_release": {
+      "builda": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      },
+      "buildb": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      }
+    },
+    "builds": {
+      "builda": {
+        "exec": {
+          "condition": {
+            "count": 1,
+            "first_ns": 816013258371,
+            "pid": 12930,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          },
+          "pre": {
+            "count": 1,
+            "first_ns": 816015811667,
+            "pid": 12932,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          },
+          "main": {
+            "count": 1,
+            "first_ns": 816019161089,
+            "pid": 12934,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          }
+        },
+        "chain": [
+          {
+            "name": "scx07qmap@-.scheduler",
+            "target": 1,
+            "inode": 20605,
+            "ops": "qmap",
+            "active_us": 815573434
+          },
+          {
+            "name": "scx07qmap@scx07lab.scheduler",
+            "target": 9657,
+            "inode": 20610,
+            "ops": "qmap",
+            "active_us": 815713013
+          },
+          {
+            "name": "scx07fifo@scx07lab-build.scheduler",
+            "target": 9716,
+            "inode": 20620,
+            "ops": "fixture_fifo",
+            "active_us": 815993177
+          }
+        ]
+      },
+      "buildb": {
+        "exec": {
+          "condition": {
+            "count": 1,
+            "first_ns": 816014082831,
+            "pid": 12931,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          },
+          "pre": {
+            "count": 1,
+            "first_ns": 816017520836,
+            "pid": 12933,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          },
+          "main": {
+            "count": 1,
+            "first_ns": 816020912091,
+            "pid": 12935,
+            "level": 2,
+            "nodes": [
+              20605,
+              20610,
+              20620
+            ]
+          }
+        },
+        "chain": [
+          {
+            "name": "scx07qmap@-.scheduler",
+            "target": 1,
+            "inode": 20605,
+            "ops": "qmap",
+            "active_us": 815573434
+          },
+          {
+            "name": "scx07qmap@scx07lab.scheduler",
+            "target": 9657,
+            "inode": 20610,
+            "ops": "qmap",
+            "active_us": 815713013
+          },
+          {
+            "name": "scx07fifo@scx07lab-build.scheduler",
+            "target": 9716,
+            "inode": 20620,
+            "ops": "fixture_fifo",
+            "active_us": 815993177
+          }
+        ]
+      }
+    },
+    "shared_loader_starts": [
+      "ff865dda217046deb044efb4f91d43a4 12918"
+    ]
+  },
+  "entry_points": {
+    "normalcold": {
+      "target_preexisted": false,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 816268132834,
+          "pid": 12947,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 816324578543,
+          "pid": 12949,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 816375940912,
+          "pid": 12951,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    },
+    "normalwarm": {
+      "target_preexisted": true,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 816466095754,
+          "pid": 12957,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 816493777129,
+          "pid": 12958,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 816499119345,
+          "pid": 12960,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    },
+    "transientcold": {
+      "target_preexisted": false,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 816679439030,
+          "pid": 12966,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 816748232882,
+          "pid": 12968,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 816803621381,
+          "pid": 12970,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    },
+    "transientwarm": {
+      "target_preexisted": true,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 816885984171,
+          "pid": 12976,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 816918173052,
+          "pid": 12977,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 816949816474,
+          "pid": 12979,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    },
+    "socketcold": {
+      "target_preexisted": false,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 817086450761,
+          "pid": 12985,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 817114083510,
+          "pid": 12986,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 817118408350,
+          "pid": 12988,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    },
+    "socketwarm": {
+      "target_preexisted": true,
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 817290884065,
+          "pid": 12995,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 817318254606,
+          "pid": 12996,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 817323603197,
+          "pid": 12998,
+          "level": 2,
+          "nodes": [
+            20605,
+            20610,
+            20620
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20610,
+          "ops": "qmap",
+          "active_us": 815713013
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20620,
+          "ops": "fixture_fifo",
+          "active_us": 815993177
+        }
+      ]
+    }
+  },
+  "failures": {
+    "veto": {
+      "returncode": 1,
+      "reason": "parent rejected",
+      "invocation": "2e812faff4a34c4081157316ed8b8b6d",
+      "journal": [
+        "Starting scx07fifo@scx07lab-build.scheduler...",
+        "scx07fifo@scx07lab-build.scheduler: Scheduler terminal record (kind=1024, code=0): parent rejected (-28)",
+        "scx07fifo@scx07lab-build.scheduler: parent rejected (-28): Operation canceled",
+        "Failed to start scx07fifo@scx07lab-build.scheduler."
+      ],
+      "markers": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      }
+    },
+    "timeout": {
+      "returncode": 1,
+      "reason": "timed out",
+      "invocation": "dd0eac6059b74b76a65e534f5793174f",
+      "journal": [
+        "Starting scx07fifo@scx07lab-build.scheduler...",
+        "scx07fifo@scx07lab-build.scheduler: Scheduler confirmation timed out: Connection timed out",
+        "Failed to start scx07fifo@scx07lab-build.scheduler."
+      ],
+      "markers": {
+        "condition": {
+          "count": 0
+        },
+        "pre": {
+          "count": 0
+        },
+        "main": {
+          "count": 0
+        }
+      }
+    }
+  },
+  "recovery": {
+    "veto": {
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 818125915806,
+          "pid": 13045,
+          "level": 2,
+          "nodes": [
+            20605,
+            20633,
+            20638
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 818161903902,
+          "pid": 13046,
+          "level": 2,
+          "nodes": [
+            20605,
+            20633,
+            20638
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 818193488907,
+          "pid": 13048,
+          "level": 2,
+          "nodes": [
+            20605,
+            20633,
+            20638
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20633,
+          "ops": "qmap",
+          "active_us": 817985092
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20638,
+          "ops": "fixture_fifo",
+          "active_us": 818065014
+        }
+      ],
+      "healthy_sibling": {
+        "name": "scx07qmap@scx07interactive.scheduler",
+        "target": 9897,
+        "inode": 20615,
+        "ops": "qmap",
+        "active_us": 815904847
+      },
+      "sibling_pid": 12925
+    },
+    "timeout": {
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 824166711138,
+          "pid": 13085,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20652
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 824198882728,
+          "pid": 13086,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20652
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 824251770264,
+          "pid": 13088,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20652
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20647,
+          "ops": "qmap",
+          "active_us": 823969180
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20652,
+          "ops": "fixture_fifo",
+          "active_us": 824040491
+        }
+      ],
+      "healthy_sibling": {
+        "name": "scx07qmap@scx07interactive.scheduler",
+        "target": 9897,
+        "inode": 20615,
+        "ops": "qmap",
+        "active_us": 815904847
+      },
+      "sibling_pid": 12925
+    }
+  },
+  "loss_after_admission": {
+    "existing_pid": 13088,
+    "detached_link": 110,
+    "new_start": {
+      "exec": {
+        "condition": {
+          "count": 1,
+          "first_ns": 824585973967,
+          "pid": 13107,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20656
+          ]
+        },
+        "pre": {
+          "count": 1,
+          "first_ns": 824622543771,
+          "pid": 13108,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20656
+          ]
+        },
+        "main": {
+          "count": 1,
+          "first_ns": 824663767957,
+          "pid": 13110,
+          "level": 2,
+          "nodes": [
+            20605,
+            20647,
+            20656
+          ]
+        }
+      },
+      "chain": [
+        {
+          "name": "scx07qmap@-.scheduler",
+          "target": 1,
+          "inode": 20605,
+          "ops": "qmap",
+          "active_us": 815573434
+        },
+        {
+          "name": "scx07qmap@scx07lab.scheduler",
+          "target": 9657,
+          "inode": 20647,
+          "ops": "qmap",
+          "active_us": 823969180
+        },
+        {
+          "name": "scx07fifo@scx07lab-build.scheduler",
+          "target": 9716,
+          "inode": 20656,
+          "ops": "fixture_fifo",
+          "active_us": 824513035
+        }
+      ]
+    }
+  },
+  "teardown": "disabled",
+  "outcome": "PASS"
+}

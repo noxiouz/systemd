@@ -14,7 +14,7 @@ executable('identity-provider', 'provider.c', 'qmap.c', include_directories : in
 if get_option('mixed')
         clang = find_program('clang-23')
         bpftool = find_program(qmap / 'sbin/bpftool')
-        foreach name : ['fifo', 'dispatch']
+        foreach name : ['fifo', 'dispatch', 'admission-exec']
                 object = custom_target(name + '.bpf.o', input : 'mixed/' + name + '.bpf.c', output : name + '.bpf.o',
                                        command : [clang, '-target', 'bpf', '-O2', '-g', '-mcpu=v3',
                                                   '-D__TARGET_ARCH_arm64', '-fms-extensions', '-Wno-microsoft-anon-tag',
