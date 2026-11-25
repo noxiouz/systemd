@@ -158,6 +158,11 @@ TEST(scheduler_transactions) {
                 check_markers(runtime, instance, false);
         }
 
+        /* Even a broken slice scheduler must allow an action-only service to complete its transition. */
+        Unit *action = load(m, "action-only.service");
+        ASSERT_OK(manager_add_job(m, JOB_START, action, JOB_REPLACE, /* error= */ NULL, /* ret= */ NULL));
+        wait_for_unit(action, UNIT_ACTIVE);
+
         Unit *cycle = load(m, "fault@cycle.service");
         ASSERT_ERROR(manager_add_job(m, JOB_START, cycle, JOB_REPLACE, &error, NULL), EDEADLK);
         ASSERT_TRUE(sd_bus_error_is_set(&error));

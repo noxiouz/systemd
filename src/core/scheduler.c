@@ -10,6 +10,7 @@
 #include "path-util.h"
 #include "scheduler.h"
 #include "serialize.h"
+#include "service.h"
 #include "slice.h"
 #include "special.h"
 #include "string-table.h"
@@ -25,8 +26,13 @@ static const UnitActiveState state_translation_table[_SCHEDULER_STATE_MAX] = {
 };
 
 Unit* unit_get_start_scheduler(Unit *u) {
-        if (u->type == UNIT_SERVICE)
-                return slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(u)));
+        if (u->type == UNIT_SERVICE) {
+                /* Action-only services, including systemd-poweroff.service, have no process to schedule. */
+                FOREACH_ELEMENT(command, SERVICE(u)->exec_command)
+                        if (*command)
+                                return slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(u)));
+                return NULL;
+        }
 
         if (u->type == UNIT_SCHEDULER) {
                 Scheduler *s = SCHEDULER(u);
