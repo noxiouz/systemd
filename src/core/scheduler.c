@@ -267,6 +267,9 @@ static int scheduler_start(Unit *u) {
 static int scheduler_stop(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
 
+        if (s->state == SCHEDULER_DETACHING)
+                return 0;
+
         scheduler_set_state(s, SCHEDULER_DETACHING);
         scheduler_backend.stop(s, /* initiate= */ true);
         return 1;

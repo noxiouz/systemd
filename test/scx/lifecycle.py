@@ -107,7 +107,7 @@ def proxy(binary, directory, generation, fd, role):
                             wait_for(lambda: (directory / 'release').exists(), 'release')
                         if fault == 'stale':
                             data = data.replace(generation.encode(), (directory / 'previous').read_bytes(), 1)
-                        if fault in ('hold', 'cancel-transfer') and fds:
+                        if fault in ('hold', 'cancel-transfer', 'retry-detach') and fds:
                             with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as holder:
                                 holder.connect(str(directory / 'hold.socket'))
                                 send(holder, b'H', fds)
@@ -248,22 +248,42 @@ def exercise(binary, results):
             with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as holder:
                 holder.bind(str(d / 'hold.socket'))
                 holder.settimeout(12)
-                for fault in ('hold', 'cancel-transfer'):
+                for fault in ('hold', 'cancel-transfer', 'retry-detach'):
                     action(fault)
                     start()
                     _, fds = packet(holder)
                     assert len(fds) == 1
                     try:
-                        if fault == 'hold':
-                            wait_for(lambda: state(CHILD) == 'active', 'restarted scheduler')
-                        else:
+                        if fault == 'cancel-transfer':
                             assert state(CHILD) == 'activating'
+                        else:
+                            wait_for(lambda: state(CHILD) == 'active', 'restarted scheduler')
                         owned = link_id(fds[0])
                         pids = [int(p) for p in (d / 'child.pid').read_text().split()]
-                        ctl('stop', CHILD)
+                        group = CG / ctl('show', '-P', 'ControlGroup', CHILD).stdout.strip().lstrip('/')
+                        if fault == 'retry-detach':
+                            # The detached helper forks in init.scope. Deny the fork, then restore
+                            # the original process limit while we still have the duplicate link.
+                            scope = CG / 'init.scope'
+                            limit = scope / 'pids.max'
+                            original = limit.read_text()
+                            events = scope / 'pids.events'
+                            before = events.read_text()
+                            try:
+                                limit.write_text((scope / 'pids.current').read_text())
+                                ctl('stop', '--no-block', CHILD)
+                                wait_for(lambda: events.read_text() != before, 'refused detach helper')
+                                assert node().exists() and state(CHILD) == 'deactivating'
+                            finally:
+                                limit.write_text(original)
+                            wait_for(lambda: state(CHILD) == 'inactive', 'retried detach')
+                        else:
+                            ctl('stop', CHILD)
+                        assert not group.exists() or 'populated 0' in (group / 'cgroup.events').read_text().splitlines()
                         assert not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
                         wait_for(lambda: all(not Path(f'/proc/{pid}').exists() for pid in pids), 'reaped provider workers')
-                        case = 'owned-stop-with-duplicate' if fault == 'hold' else 'cancel-in-flight-attachment'
+                        case = {'hold': 'owned-stop-with-duplicate', 'cancel-transfer': 'cancel-in-flight-attachment',
+                                'retry-detach': 'retry-owned-detach'}[fault]
                         results.append(dict(case=case, link=owned, reaped=pids))
                         if fault == 'cancel-transfer':
                             action('normal')

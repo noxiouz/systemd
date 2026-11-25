@@ -1,11 +1,16 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 #include <stdio.h>
+#include <sys/wait.h>
 
 #include "sd-bus.h"
+#include "sd-event.h"
 
+#include "format-util.h"
 #include "manager.h"
 #include "manager-dump.h"
+#include "pidref.h"
+#include "process-util.h"
 #include "rm-rf.h"
 #include "scheduler.h"
 #include "service.h"
@@ -339,6 +344,56 @@ TEST(scheduler_bindings) {
                 ASSERT_OK(manager_load_startable_unit_or_warn(m, "batch@unbound.scheduler", NULL, LOG_ERR, &unbound));
                 ASSERT_ERROR(unit_start(unbound, NULL), ENOLINK);
         }
+}
+
+TEST(scheduler_detach_timeout) {
+        _cleanup_(rm_rf_physical_and_freep) char *runtime_dir = NULL;
+        _cleanup_(manager_freep) Manager *m = NULL;
+        _cleanup_(pidref_done_sigkill_wait) PidRef helper = PIDREF_NULL;
+        _cleanup_free_ char *unit_dir = NULL;
+        char pid[DECIMAL_STR_MAX(pid_t)];
+        siginfo_t si;
+        Unit *u;
+        int r;
+
+        ASSERT_OK(get_testdata_dir("test-scheduler", &unit_dir));
+        ASSERT_OK(setenv_unit_path(unit_dir));
+        ASSERT_NOT_NULL(runtime_dir = setup_fake_runtime_dir());
+        r = manager_new(RUNTIME_SCOPE_USER, MANAGER_TEST_RUN_BASIC | MANAGER_TEST_DONT_OPEN_EXECUTOR, &m);
+        if (manager_errno_skip_test(r))
+                return (void) log_tests_skipped_errno(r, "manager_new");
+        ASSERT_OK(r);
+        ASSERT_OK(manager_startup(m, NULL, NULL, NULL, NULL));
+        ASSERT_OK(manager_load_startable_unit_or_warn(m, "batch@unbound.scheduler", NULL, LOG_ERR, &u));
+
+        r = ASSERT_OK(pidref_safe_fork("(test-detach)", FORK_DEATHSIG_SIGKILL, &helper));
+        if (r == 0) {
+                raise(SIGSTOP);
+                _exit(EXIT_SUCCESS);
+        }
+        ASSERT_OK_ZERO(waitid(P_PID, helper.pid, &si, WSTOPPED));
+
+        /* Model reexecution while a detach helper is still blocked and the loader has exited. */
+        xsprintf(pid, PID_FMT, helper.pid);
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "state", "detaching", NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "scx-detacher", pid, NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "scx-deadline", "1", NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->coldplug(u));
+        ASSERT_OK(manager_add_job(m, JOB_STOP, u, JOB_REPLACE, NULL, NULL));
+        usec_t until = usec_add(now(CLOCK_MONOTONIC), 5 * USEC_PER_SEC);
+        while (u->job) {
+                ASSERT_LT(now(CLOCK_MONOTONIC), until);
+                ASSERT_OK(sd_event_run(m->event, 100 * USEC_PER_MSEC));
+        }
+        ASSERT_EQ(SCHEDULER(u)->result, -ETIMEDOUT);
+        ASSERT_EQ(unit_active_state(u), UNIT_DEACTIVATING);
+        ASSERT_OK(pidref_kill(&helper, SIGCONT));
+        while (unit_active_state(u) == UNIT_DEACTIVATING) {
+                ASSERT_LT(now(CLOCK_MONOTONIC), until);
+                ASSERT_OK(sd_event_run(m->event, 100 * USEC_PER_MSEC));
+        }
+        ASSERT_EQ(unit_active_state(u), UNIT_FAILED);
+        ASSERT_NULL(SCHEDULER(u)->runtime);
 }
 
 static int intro(void) {

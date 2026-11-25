@@ -16,6 +16,7 @@
 #include "fileio.h"
 #include "format-util.h"
 #include "iovec-util.h"
+#include "job.h"
 #include "manager.h"
 #include "parse-util.h"
 #include "path-util.h"
@@ -181,6 +182,7 @@ static int detach_link(Scheduler *s) {
 }
 
 static int receive_packet(Scheduler *s, int fd);
+static void arm_stop_timer(Scheduler *s, bool retry);
 
 static void finish_stop(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
@@ -189,13 +191,18 @@ static void finish_stop(Scheduler *s) {
                 if (pidref_is_set(&rt->loader) || pidref_is_set(&rt->detacher))
                         return;
 
-                if (unit_cgroup_is_empty(UNIT(s)) == 0) {
-                        /* The loader has exited. Reap any remaining workers before allowing the
-                         * next invocation to reuse this cgroup. The detach helper runs outside it. */
-                        int r = unit_kill_context(UNIT(s), KILL_KILL);
+                if (s->cgroup_runtime && s->cgroup_runtime->cgroup_path) {
+                        int r = unit_cgroup_is_empty(UNIT(s));
                         if (r < 0)
-                                s->result = log_unit_error_errno(UNIT(s), r, "Failed to kill scheduler workers: %m");
-                        return; /* The cgroup empty notification will resume teardown. */
+                                return; /* Retry at the stop deadline. */
+                        if (r == 0) {
+                                /* The loader has exited. Reap its remaining workers before reusing the
+                                 * cgroup. The detach helper runs outside it. */
+                                r = unit_kill_context(UNIT(s), KILL_KILL);
+                                if (r < 0)
+                                        s->result = log_unit_error_errno(UNIT(s), r, "Failed to kill scheduler workers: %m");
+                                return; /* Wait for the cgroup empty notification. */
+                        }
                 }
 
                 if (rt->channel >= 0) {
@@ -204,12 +211,14 @@ static void finish_stop(Scheduler *s) {
                         if (rt->link < 0)
                                 (void) receive_packet(s, rt->channel);
                         rt->channel = safe_close(rt->channel);
-                        if (rt->link >= 0) {
-                                int r = detach_link(s);
-                                if (r >= 0)
-                                        return;
-                                s->result = log_unit_error_errno(UNIT(s), r, "Cannot start scheduler detach: %m");
+                }
+                if (rt->link >= 0) {
+                        int r = detach_link(s);
+                        if (r < 0) {
+                                log_unit_debug_errno(UNIT(s), r, "Cannot start scheduler detach, retrying: %m");
+                                arm_stop_timer(s, /* retry= */ true);
                         }
+                        return;
                 }
         }
 
@@ -217,9 +226,32 @@ static void finish_stop(Scheduler *s) {
         scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
 }
 
+static void stop_timeout(Scheduler *s, int error) {
+        Unit *u = UNIT(s);
+
+        /* The helper may be blocked in the kernel. Keep it and the link supervised until detach
+         * finishes, but complete the caller's job at its deadline. */
+        if (s->result >= 0)
+                s->result = log_unit_error_errno(u, error, "Scheduler teardown did not finish: %m");
+        if (u->job)
+                job_finish_and_invalidate(u->job, JOB_TIMEOUT, /* recursive= */ true, /* already= */ false);
+        (void) unit_kill_context(u, KILL_KILL);
+}
+
+static void arm_stop_timer(Scheduler *s, bool retry) {
+        SchedulerRuntime *rt = ASSERT_PTR(s->runtime);
+        usec_t when = rt->deadline;
+        int r;
+
+        if (retry)
+                when = MIN(when, usec_add(now(CLOCK_MONOTONIC), USEC_PER_SEC));
+        r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ false, when, dispatch_timer);
+        if (r < 0)
+                stop_timeout(s, r);
+}
+
 static void backend_stop(Scheduler *s, bool initiate) {
         SchedulerRuntime *rt = s->runtime;
-        int r;
 
         if (!rt || !initiate)
                 return finish_stop(s);
@@ -230,13 +262,8 @@ static void backend_stop(Scheduler *s, bool initiate) {
                 (void) shutdown(rt->channel, SHUT_WR);
         }
 
-        /* The provider normally exits on Q or EOF. Kill it if it is still loading or hung. */
-        if (pidref_is_set(&rt->loader)) {
-                rt->deadline = usec_add(now(CLOCK_MONOTONIC), UNIT(s)->manager->defaults.timeout_stop_usec);
-                r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ false, rt->deadline, dispatch_timer);
-                if (r < 0)
-                        (void) unit_kill_context(UNIT(s), KILL_KILL);
-        }
+        rt->deadline = usec_add(now(CLOCK_MONOTONIC), UNIT(s)->manager->defaults.timeout_stop_usec);
+        arm_stop_timer(s, /* retry= */ false);
         finish_stop(s);
 }
 
@@ -259,8 +286,13 @@ static void backend_sigchld(Scheduler *s, pid_t pid, int code, int status) {
                         return backend_fail(s, -ECHILD, "Scheduler loader exited");
         } else if (rt->detacher.pid == pid) {
                 unit_unwatch_pidref_done(UNIT(s), &rt->detacher);
-                if (code != CLD_EXITED || status != EXIT_SUCCESS)
-                        s->result = log_unit_error_errno(UNIT(s), code == CLD_EXITED ? status : SYNTHETIC_ERRNO(EIO), "Kernel link detach failed: %m");
+                if (code != CLD_EXITED || status != EXIT_SUCCESS) {
+                        log_unit_debug_errno(UNIT(s), code == CLD_EXITED ? status : SYNTHETIC_ERRNO(EIO),
+                                             "Kernel link detach failed, retrying: %m");
+                        arm_stop_timer(s, /* retry= */ true);
+                        return;
+                }
+                rt->link = safe_close(rt->link);
         } else
                 return;
 
@@ -285,7 +317,13 @@ static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata) 
         int r;
 
         if (s->state == SCHEDULER_DETACHING) {
-                (void) unit_kill_context(UNIT(s), KILL_KILL);
+                if (now(CLOCK_MONOTONIC) >= rt->deadline) {
+                        stop_timeout(s, -ETIMEDOUT);
+                        /* New jobs can arrive while draining an uninterruptible helper. Bound those too. */
+                        rt->deadline = usec_add(now(CLOCK_MONOTONIC), UNIT(s)->manager->defaults.timeout_stop_usec);
+                }
+                arm_stop_timer(s, /* retry= */ false);
+                finish_stop(s);
                 return 0;
         }
 
@@ -680,10 +718,8 @@ static int backend_coldplug(Scheduler *s) {
 
         if (s->deserialized_state == SCHEDULER_DETACHING) {
                 scheduler_set_state(s, SCHEDULER_DETACHING);
-                if (!pidref_is_set(&rt->loader) && !pidref_is_set(&rt->detacher))
-                        finish_stop(s);
-                else if (pidref_is_set(&rt->loader))
-                        return unit_arm_timer(u, &rt->timer, false, rt->deadline, dispatch_timer);
+                arm_stop_timer(s, /* retry= */ false);
+                finish_stop(s);
                 return 0;
         }
 
