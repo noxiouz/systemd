@@ -46,7 +46,7 @@ static int serve(const char *invocation, uint64_t target, int link, int record) 
 
         for (;;) {
                 struct scx_test_exit status;
-                if (sym_bpf_map_lookup_elem(record, &(uint32_t){}, &status) < 0)
+                if (sym_bpf_map_lookup_elem(record, &(uint32_t){ 0 }, &status) < 0)
                         return -errno;
 
                 if (!sent_exit && status.kind != 0 && !streq_ptr(event, "attach"))
