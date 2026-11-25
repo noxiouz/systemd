@@ -98,7 +98,7 @@ static void check_markers(const char *runtime, const char *instance, bool expect
 static Unit* load(Manager *m, const char *name) {
         Unit *u;
 
-        ASSERT_OK(manager_load_startable_unit_or_warn(m, name, NULL, LOG_ERR, &u));
+        ASSERT_OK(manager_load_startable_unit_or_warn(m, name, /* path= */ NULL, LOG_ERR, &u));
         return u;
 }
 
@@ -117,26 +117,26 @@ TEST(scheduler_transactions) {
         if (manager_errno_skip_test(r))
                 return (void) log_tests_skipped_errno(r, "manager_new");
         ASSERT_OK(r);
-        m->executor_fd = ASSERT_OK(pin_callout_binary(SYSTEMD_MULTICALL_BINARY ? SYSTEMD_BINARY_PATH : SYSTEMD_EXECUTOR_BINARY_PATH, NULL));
+        m->executor_fd = ASSERT_OK(pin_callout_binary(SYSTEMD_MULTICALL_BINARY ? SYSTEMD_BINARY_PATH : SYSTEMD_EXECUTOR_BINARY_PATH, /* ret_path= */ NULL));
         m->defaults.std_output = EXEC_OUTPUT_INHERIT;
-        ASSERT_OK(manager_startup(m, NULL, NULL, NULL, NULL));
+        ASSERT_OK(manager_startup(m, /* serialization= */ NULL, /* fds= */ NULL, /* named_listen_fds= */ NULL, /* root= */ NULL));
 
         Unit *a = load(m, "workload@a.service"), *b = load(m, "workload@b.service");
         Unit *middle = load(m, "partition@lab.scheduler"), *leaf = load(m, "batch@lab-build.scheduler");
         Unit *target = UNIT_DEREF(SCHEDULER(leaf)->target_slice);
         leaf->stop_when_unneeded = true;
         ASSERT_EQ(unit_active_state(target), UNIT_INACTIVE);
-        ASSERT_OK(manager_add_job(m, JOB_START, a, JOB_REPLACE, NULL, NULL));
+        ASSERT_OK(manager_add_job(m, JOB_START, a, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         shared = ASSERT_PTR(leaf->job);
-        ASSERT_OK(manager_add_job(m, JOB_START, b, JOB_REPLACE, NULL, NULL));
+        ASSERT_OK(manager_add_job(m, JOB_START, b, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         ASSERT_PTR_EQ(leaf->job, shared);
 
         wait_for_unit(middle, UNIT_ACTIVATING);
         ASSERT_EQ(unit_active_state(leaf), UNIT_INACTIVE);
         ASSERT_NULL(strv_find(attempts, leaf->id));
-        check_markers(runtime, "a", false);
-        check_markers(runtime, "b", false);
-        ASSERT_OK(job_finish_and_invalidate(ASSERT_PTR(a->job), JOB_CANCELED, true, false));
+        check_markers(runtime, "a", /* expected= */ false);
+        check_markers(runtime, "b", /* expected= */ false);
+        ASSERT_OK(job_finish_and_invalidate(ASSERT_PTR(a->job), JOB_CANCELED, /* recursive= */ true, /* already= */ false));
         ASSERT_PTR_EQ(leaf->job, shared);
 
         /* Changing the slice of an inactive waiter drops its derived scheduler ordering only. */
@@ -155,14 +155,14 @@ TEST(scheduler_transactions) {
                 ASSERT_OK(sd_event_run(m->event, 50 * USEC_PER_MSEC));
         }
 
-        check_markers(runtime, "a", false);
-        check_markers(runtime, "b", true);
+        check_markers(runtime, "a", /* expected= */ false);
+        check_markers(runtime, "b", /* expected= */ true);
         ASSERT_FALSE(unit_is_unneeded(leaf));
         ASSERT_STRV_EQ(attempts, STRV_MAKE("partition@-.scheduler", "partition@lab.scheduler", "batch@lab-build.scheduler"));
 
         foreign = SLICE(UNIT_GET_SLICE(a));
         ASSERT_ERROR(unit_start(a, /* details= */ NULL), ENOLINK);
-        check_markers(runtime, "a", false);
+        check_markers(runtime, "a", /* expected= */ false);
         foreign = NULL;
 
         /* Clearing a middle declaration changes the next start. The still-live leaf belongs to the old parent. */
@@ -176,15 +176,15 @@ TEST(scheduler_transactions) {
         /* Explicit stop is independent of an already-admitted workload. Hold a reference to its PID. */
         _cleanup_(pidref_done) PidRef pid = PIDREF_NULL;
         ASSERT_OK(pidref_set_pid(&pid, SERVICE(b)->main_pid.pid));
-        ASSERT_OK(pidref_kill(&pid, 0));
-        ASSERT_OK(manager_add_job(m, JOB_STOP, leaf, JOB_REPLACE, NULL, NULL));
+        ASSERT_OK(pidref_kill(&pid, /* sig= */ 0));
+        ASSERT_OK(manager_add_job(m, JOB_STOP, leaf, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         wait_for_unit(leaf, UNIT_INACTIVE);
         ASSERT_EQ(unit_active_state(b), UNIT_ACTIVE);
-        ASSERT_OK(pidref_kill(&pid, 0));
+        ASSERT_OK(pidref_kill(&pid, /* sig= */ 0));
 
         /* Run the same transaction with a pre-existing, occupied target cgroup. */
         ASSERT_EQ(unit_active_state(target), UNIT_ACTIVE);
-        ASSERT_OK(manager_add_job(m, JOB_START, a, JOB_REPLACE, NULL, NULL));
+        ASSERT_OK(manager_add_job(m, JOB_START, a, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         wait_for_unit(a, UNIT_ACTIVE);
         ASSERT_EQ(strv_length(attempts), 4U);
         ASSERT_STREQ(attempts[3], leaf->id);
@@ -194,11 +194,11 @@ TEST(scheduler_transactions) {
                 _cleanup_free_ char *failed = ASSERT_PTR(strjoin("workload-failed@", instance, ".target"));
                 Unit *workload = load(m, name), *on_failure = load(m, failed);
 
-                ASSERT_OK(manager_add_job(m, JOB_START, workload, JOB_REPLACE, NULL, NULL));
+                ASSERT_OK(manager_add_job(m, JOB_START, workload, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
                 wait_for_unit(on_failure, UNIT_ACTIVE);
                 ASSERT_NULL(workload->job);
                 ASSERT_EQ(unit_active_state(workload), UNIT_INACTIVE);
-                check_markers(runtime, instance, false);
+                check_markers(runtime, instance, /* expected= */ false);
         }
 
         Unit *failed = load(m, "batch@fail.scheduler");
@@ -213,12 +213,12 @@ TEST(scheduler_transactions) {
         wait_for_unit(action, UNIT_ACTIVE);
 
         Unit *cycle = load(m, "fault@cycle.service");
-        ASSERT_ERROR(manager_add_job(m, JOB_START, cycle, JOB_REPLACE, &error, NULL), EDEADLK);
+        ASSERT_ERROR(manager_add_job(m, JOB_START, cycle, JOB_REPLACE, &error, /* ret= */ NULL), EDEADLK);
         ASSERT_TRUE(sd_bus_error_is_set(&error));
-        check_markers(runtime, "cycle", false);
+        check_markers(runtime, "cycle", /* expected= */ false);
 
-        ASSERT_OK(manager_add_job(m, JOB_STOP, a, JOB_REPLACE, NULL, NULL));
-        ASSERT_OK(manager_add_job(m, JOB_STOP, b, JOB_REPLACE, NULL, NULL));
+        ASSERT_OK(manager_add_job(m, JOB_STOP, a, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
+        ASSERT_OK(manager_add_job(m, JOB_STOP, b, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         wait_for_unit(a, UNIT_INACTIVE);
         wait_for_unit(b, UNIT_INACTIVE);
         ASSERT_TRUE(unit_is_unneeded(leaf));
@@ -227,7 +227,7 @@ TEST(scheduler_transactions) {
 }
 
 static int intro(void) {
-        int r = enter_cgroup_subroot(NULL);
+        int r = enter_cgroup_subroot(/* ret_cgroup= */ NULL);
         if (r < 0)
                 return log_tests_skipped_errno(r, "writable delegated cgroup required");
         return EXIT_SUCCESS;

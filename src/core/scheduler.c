@@ -159,14 +159,14 @@ static int scheduler_load(Unit *u) {
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOEXEC),
                                             "A scheduler must be instantiated for a slice.");
 
-        r = unit_name_build_from_type(u->instance, NULL, UNIT_SLICE, &name);
+        r = unit_name_build_from_type(u->instance, /* instance= */ NULL, UNIT_SLICE, &name);
         if (r == -ENOMEM)
                 return r;
         if (r < 0 || !slice_name_is_valid(name))
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOEXEC),
                                             "Instance '%s' does not identify a slice.", u->instance);
 
-        r = manager_load_unit_prepare(u->manager, name, NULL, NULL, &target);
+        r = manager_load_unit_prepare(u->manager, name, /* path= */ NULL, NULL, &target);
         if (r < 0)
                 return r;
 
@@ -338,7 +338,7 @@ static int scheduler_deserialize_item(Unit *u, const char *key, const char *valu
         if (streq(key, "scheduler-result"))
                 return safe_atoi(value, &s->result);
         if (streq(key, "scheduler-failure"))
-                return cunescape(value, 0, &s->failure_reason);
+                return cunescape(value, /* flags= */ 0, &s->failure_reason);
 
         return scheduler_runtime_deserialize(s, key, value, fds);
 }

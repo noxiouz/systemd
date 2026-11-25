@@ -141,7 +141,7 @@ static int run(int argc, char **argv) {
                 elf = sched_ext_cid_bpf__elf_bytes(&size);
         else
                 elf = sched_ext_child_bpf__elf_bytes(&size);
-        _cleanup_(sym_bpf_object__closep) struct bpf_object *obj = sym_bpf_object__open_mem(elf, size, NULL);
+        _cleanup_(sym_bpf_object__closep) struct bpf_object *obj = sym_bpf_object__open_mem(elf, size, /* opts= */ NULL);
         if (!obj)
                 return -errno;
 

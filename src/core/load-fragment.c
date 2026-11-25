@@ -2255,7 +2255,7 @@ int config_parse_slice_scheduler(
                 return log_syntax(unit, LOG_ERR, filename, line, SYNTHETIC_ERRNO(ENOEXEC),
                                   "%s=%s must name the scheduler instance for %s.", lvalue, name, u->id);
 
-        r = manager_load_unit_prepare(u->manager, name, NULL, NULL, &scheduler);
+        r = manager_load_unit_prepare(u->manager, name, /* path= */ NULL, NULL, &scheduler);
         if (r < 0)
                 return r;
 

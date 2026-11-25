@@ -50,14 +50,14 @@ static bool backend_owns_node(Scheduler *s, const char *path) {
         SchedulerRuntime *rt = s->runtime;
 
         return rt && rt->node >= 0 &&
-                inode_same_at(rt->node, NULL, AT_FDCWD, path, AT_EMPTY_PATH) > 0;
+                inode_same_at(rt->node, /* filea= */ NULL, AT_FDCWD, path, AT_EMPTY_PATH) > 0;
 }
 
 bool scheduler_link_is_live(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
 
         return rt && rt->node >= 0 && rt->link >= 0 &&
-                inode_same_at(rt->target, NULL, AT_FDCWD, rt->target_path, AT_EMPTY_PATH) > 0 &&
+                inode_same_at(rt->target, /* filea= */ NULL, AT_FDCWD, rt->target_path, AT_EMPTY_PATH) > 0 &&
                 backend_owns_node(s, rt->node_path) &&
                 faccessat(rt->node, "ops", F_OK, 0) >= 0;
 }
@@ -340,7 +340,7 @@ static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata) 
                 }
         }
 
-        r = unit_arm_timer(UNIT(s), &rt->timer, true, SCX_STATUS_INTERVAL, dispatch_timer);
+        r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ true, SCX_STATUS_INTERVAL, dispatch_timer);
         if (r < 0)
                 backend_fail(s, r, "Cannot arm scheduler timeout");
         return 0;
@@ -542,7 +542,7 @@ int scheduler_attach(Scheduler *s, int target_fd) {
                         return -ENOMEM;
         } else {
                 /* A nested manager's root cgroup cannot represent the host attachment. */
-                r = inode_same_at(target_fd, NULL, AT_FDCWD, "/sys/fs/cgroup", AT_EMPTY_PATH);
+                r = inode_same_at(target_fd, /* filea= */ NULL, AT_FDCWD, "/sys/fs/cgroup", AT_EMPTY_PATH);
                 if (r <= 0)
                         return r < 0 ? r : -EOPNOTSUPP;
 
@@ -555,13 +555,13 @@ int scheduler_attach(Scheduler *s, int target_fd) {
                 return -EBUSY;
         if (errno != ENOENT)
                 return -errno;
-        r = cg_get_path(ASSERT_PTR(unit_get_cgroup_runtime(target))->cgroup_path, NULL, &target_path);
+        r = cg_get_path(ASSERT_PTR(unit_get_cgroup_runtime(target))->cgroup_path, /* suffix= */ NULL, &target_path);
         if (r < 0)
                 return r;
 
         if (socketpair(AF_UNIX, SOCK_SEQPACKET|SOCK_CLOEXEC, 0, pair) < 0)
                 return -errno;
-        r = fd_nonblock(pair[0], true);
+        r = fd_nonblock(pair[0], /* nonblock= */ true);
         if (r < 0)
                 return r;
 
@@ -583,7 +583,7 @@ int scheduler_attach(Scheduler *s, int target_fd) {
         r = sd_event_add_io(u->manager->event, &rt->io, rt->channel, EPOLLIN, dispatch_io, s);
         if (r < 0)
                 goto fail;
-        r = unit_arm_timer(u, &rt->timer, true, MIN(s->timeout_usec, SCX_STATUS_INTERVAL), dispatch_timer);
+        r = unit_arm_timer(u, &rt->timer, /* relative= */ true, MIN(s->timeout_usec, SCX_STATUS_INTERVAL), dispatch_timer);
         if (r < 0)
                 goto fail;
         r = spawn_provider(s, pair[1], rt->target, !parent, &rt->loader);
@@ -659,7 +659,7 @@ int scheduler_runtime_deserialize(Scheduler *s, const char *key, const char *val
                 return r;
         } else if (streq(key, "scx-parent")) {
                 Unit *parent;
-                r = manager_load_unit(UNIT(s)->manager, value, NULL, NULL, &parent);
+                r = manager_load_unit(UNIT(s)->manager, value, /* path= */ NULL, NULL, &parent);
                 if (r < 0)
                         return r;
                 if (parent->type != UNIT_SCHEDULER || parent == UNIT(s))
@@ -686,12 +686,12 @@ int scheduler_runtime_coldplug(Scheduler *s) {
                 goto fail;
         }
         if (pidref_is_set(&rt->loader)) {
-                r = unit_watch_pidref(u, &rt->loader, true);
+                r = unit_watch_pidref(u, &rt->loader, /* exclusive= */ true);
                 if (r < 0)
                         goto fail;
         }
         if (pidref_is_set(&rt->detacher)) {
-                r = unit_watch_pidref(u, &rt->detacher, true);
+                r = unit_watch_pidref(u, &rt->detacher, /* exclusive= */ true);
                 if (r < 0)
                         goto fail;
         }
@@ -738,7 +738,7 @@ int scheduler_runtime_coldplug(Scheduler *s) {
                 if (r < 0)
                         goto fail;
         }
-        r = unit_arm_timer(u, &rt->timer, false, MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_INTERVAL)), dispatch_timer);
+        r = unit_arm_timer(u, &rt->timer, /* relative= */ false, MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_INTERVAL)), dispatch_timer);
         if (r < 0)
                 goto fail;
         return 0;
