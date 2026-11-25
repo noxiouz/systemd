@@ -39,7 +39,7 @@ def wait_for(fn, desc):
     while not fn():
         if time.monotonic() >= deadline:
             raise RuntimeError(f'timed out waiting for {desc}')
-        time.sleep(.02)
+        time.sleep(0.02)
 
 
 def packet(sock):
@@ -70,7 +70,9 @@ def proxy(binary, directory, generation, fd, role):
         channel, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         stack.enter_context(channel)
         stack.enter_context(child)
-        proc = subprocess.Popen([binary, generation, str(target_fd), role], stdin=child, pass_fds=(target_fd,))
+        proc = subprocess.Popen(
+            [binary, generation, str(target_fd), role], stdin=child, pass_fds=(target_fd,)
+        )
         child.close()
         pids = [os.getpid(), proc.pid]
         if fault == 'hold':
@@ -106,7 +108,9 @@ def proxy(binary, directory, generation, fd, role):
                         if fault in ('delay', 'recreate'):
                             wait_for(lambda: (directory / 'release').exists(), 'release')
                         if fault == 'stale':
-                            data = data.replace(generation.encode(), (directory / 'previous').read_bytes(), 1)
+                            data = data.replace(
+                                generation.encode(), (directory / 'previous').read_bytes(), 1
+                            )
                         if fault in ('hold', 'cancel-transfer', 'retry-detach') and fds:
                             with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as holder:
                                 holder.connect(str(directory / 'hold.socket'))
@@ -141,8 +145,11 @@ def foreign(binary, target=TARGET):
 
 
 def link_id(fd):
-    fields = dict(line.split(':\t', 1) for line in Path(f'/proc/self/fdinfo/{fd}').read_text().splitlines()
-                  if ':\t' in line)
+    fields = dict(
+        line.split(':\t', 1)
+        for line in Path(f'/proc/self/fdinfo/{fd}').read_text().splitlines()
+        if ':\t' in line
+    )
     assert fields['link_type'] == 'struct_ops'
     return int(fields['link_id'])
 
@@ -158,8 +165,11 @@ def manager_pidfds(pid):
 
 
 def exercise(binary, results):
-    if os.getuid() != 0 or subprocess.run(['systemd-detect-virt', '--quiet', '--vm']).returncode or \
-            not subprocess.run(['systemd-detect-virt', '--quiet', '--container']).returncode:
+    if (
+        os.getuid() != 0
+        or subprocess.run(['systemd-detect-virt', '--quiet', '--vm']).returncode
+        or not subprocess.run(['systemd-detect-virt', '--quiet', '--container']).returncode
+    ):
         raise RuntimeError('requires root on a dedicated full-system guest')
     if (SCX / 'state').read_text().strip() != 'disabled' or (SCX / 'root').exists():
         raise RuntimeError('an external scheduler is already present')
@@ -183,10 +193,22 @@ def exercise(binary, results):
             wait_for(lambda: state(CHILD) == 'failed', case)
             invocation = ctl('show', '-P', 'InvocationID', CHILD).stdout.strip()
             subprocess.run(['journalctl', '--sync'], check=True, timeout=10)
-            journal = subprocess.check_output(['journalctl', '-b', '--no-pager', '-o', 'json',
-                                               '_PID=1', f'UNIT={CHILD}', f'INVOCATION_ID={invocation}'], text=True)
-            failures = [entry['MESSAGE'] for line in journal.splitlines()
-                        if (entry := json.loads(line)).get('ERRNO')]
+            journal = subprocess.check_output(
+                [
+                    'journalctl',
+                    '-b',
+                    '--no-pager',
+                    '-o',
+                    'json',
+                    '_PID=1',
+                    f'UNIT={CHILD}',
+                    f'INVOCATION_ID={invocation}',
+                ],
+                text=True,
+            )
+            failures = [
+                entry['MESSAGE'] for line in journal.splitlines() if (entry := json.loads(line)).get('ERRNO')
+            ]
             assert failures, f'missing failure record for {case}/{invocation}'
             results.append(dict(case=case, state=state(CHILD), invocation=invocation, failures=failures))
 
@@ -199,8 +221,10 @@ def exercise(binary, results):
             files.callback(dropin.rmdir)
         create(dropin / '98-scxlifecycle.conf', '[Slice]\nScheduler=scxlifecycle@.scheduler\n')
         create(UNITS / 'scxlifecycle.slice', '[Slice]\nScheduler=scxlifecycle@.scheduler\n')
-        create(UNITS / 'scxlifecycle@.scheduler',
-               f'[Scheduler]\nExecStart=/usr/bin/python3 {Path(__file__).resolve()} proxy {binary} {d}\nTimeoutStartSec=4s\n')
+        create(
+            UNITS / 'scxlifecycle@.scheduler',
+            f'[Scheduler]\nExecStart=/usr/bin/python3 {Path(__file__).resolve()} proxy {binary} {d}\nTimeoutStartSec=4s\n',
+        )
         create(UNITS / 'scxshort.slice', '[Slice]\nScheduler=scxshort@.scheduler\n')
         create(UNITS / 'scxshort@.scheduler', f'[Scheduler]\nExecStart={binary}\nTimeoutStartSec=200ms\n')
         try:
@@ -220,7 +244,13 @@ def exercise(binary, results):
                 wait_for(lambda: state(CHILD) == 'active', 'restored provider')
                 assert manager_pidfds(loader) == retained
             (d / 'previous').write_bytes((d / 'received').read_bytes())
-            results.append(dict(case='delayed-direct-start', target=TARGET.stat().st_ino, kernel_node=node().stat().st_ino))
+            results.append(
+                dict(
+                    case='delayed-direct-start',
+                    target=TARGET.stat().st_ino,
+                    kernel_node=node().stat().st_ino,
+                )
+            )
             ctl('stop', CHILD)
 
             wrong = CG / d.name
@@ -279,11 +309,22 @@ def exercise(binary, results):
                             wait_for(lambda: state(CHILD) == 'inactive', 'retried detach')
                         else:
                             ctl('stop', CHILD)
-                        assert not group.exists() or 'populated 0' in (group / 'cgroup.events').read_text().splitlines()
-                        assert not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
-                        wait_for(lambda: all(not Path(f'/proc/{pid}').exists() for pid in pids), 'reaped provider workers')
-                        case = {'hold': 'owned-stop-with-duplicate', 'cancel-transfer': 'cancel-in-flight-attachment',
-                                'retry-detach': 'retry-owned-detach'}[fault]
+                        assert (
+                            not group.exists()
+                            or 'populated 0' in (group / 'cgroup.events').read_text().splitlines()
+                        )
+                        assert (
+                            not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
+                        )
+                        wait_for(
+                            lambda: all(not Path(f'/proc/{pid}').exists() for pid in pids),
+                            'reaped provider workers',
+                        )
+                        case = {
+                            'hold': 'owned-stop-with-duplicate',
+                            'cancel-transfer': 'cancel-in-flight-attachment',
+                            'retry-detach': 'retry-owned-detach',
+                        }[fault]
                         results.append(dict(case=case, link=owned, reaped=pids))
                         if fault == 'cancel-transfer':
                             action('normal')

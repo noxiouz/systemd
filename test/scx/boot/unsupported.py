@@ -32,13 +32,26 @@ def test(provider, image_digest):
     run('systemd-detect-virt', '--vm', '--quiet')
     release = platform.release()
     config = Path('/boot') / f'config-{release}'
-    result = dict(kernel=release, image_sha256=image_digest, kernel_sha256=sha256(config.with_name(f'vmlinuz-{release}')),
-                  kernel_config_sha256=sha256(config), btf_sha256=sha256(BTF), probe=probe(BTF),
-                  manager=os.readlink('/proc/1/exe'),
-                  kernel_config=[s for s in config.read_text().splitlines() if 'CONFIG_SCHED_CLASS_EXT' in s or
-                                 'CONFIG_EXT_SUB_SCHED' in s or s.startswith('CONFIG_DEBUG_INFO_BTF=')])
+    result = dict(
+        kernel=release,
+        image_sha256=image_digest,
+        kernel_sha256=sha256(config.with_name(f'vmlinuz-{release}')),
+        kernel_config_sha256=sha256(config),
+        btf_sha256=sha256(BTF),
+        probe=probe(BTF),
+        manager=os.readlink('/proc/1/exe'),
+        kernel_config=[
+            s
+            for s in config.read_text().splitlines()
+            if 'CONFIG_SCHED_CLASS_EXT' in s
+            or 'CONFIG_EXT_SUB_SCHED' in s
+            or s.startswith('CONFIG_DEBUG_INFO_BTF=')
+        ],
+    )
     if result['probe']['hierarchy'] != 'unsupported' or (SCX / 'state').read_text().strip() != 'disabled':
-        raise RuntimeError('This test requires an idle stock kernel with readable BTF and root-only sched_ext')
+        raise RuntimeError(
+            'This test requires an idle stock kernel with readable BTF and root-only sched_ext'
+        )
 
     units = {
         '-.slice.d/70-scxneg.conf': '[Slice]\nScheduler=scxnegroot@.scheduler\n',
@@ -64,12 +77,33 @@ def test(provider, image_digest):
         code, diagnostic = run(ctl, 'start', WORKLOAD, check=False)
         invocation = run(ctl, 'show', '-P', 'InvocationID', CHILD)[1]
         run('journalctl', '--sync')
-        _, messages = run('journalctl', '-b', '--no-pager', '-o', 'cat', '--since', f'@{since:f}', '_PID=1', f'UNIT={CHILD}')
-        result.update(start_exit_status=code, diagnostic=diagnostic, invocation=invocation, messages=messages,
-                      child_state=run(ctl, 'show', '-P', 'ActiveState', CHILD)[1],
-                      workload_markers=int(MARK.exists()), parent_after=run(ctl, 'is-active', ROOT)[1])
-        if not (code != 0 and result['child_state'] == 'failed' and 'Operation not supported' in messages
-                and not MARK.exists() and result['parent_after'] == 'active'):
+        _, messages = run(
+            'journalctl',
+            '-b',
+            '--no-pager',
+            '-o',
+            'cat',
+            '--since',
+            f'@{since:f}',
+            '_PID=1',
+            f'UNIT={CHILD}',
+        )
+        result.update(
+            start_exit_status=code,
+            diagnostic=diagnostic,
+            invocation=invocation,
+            messages=messages,
+            child_state=run(ctl, 'show', '-P', 'ActiveState', CHILD)[1],
+            workload_markers=int(MARK.exists()),
+            parent_after=run(ctl, 'is-active', ROOT)[1],
+        )
+        if not (
+            code != 0
+            and result['child_state'] == 'failed'
+            and 'Operation not supported' in messages
+            and not MARK.exists()
+            and result['parent_after'] == 'active'
+        ):
             raise RuntimeError(f'Child did not produce the required unsupported failure: {result}')
     finally:
         run(ctl, 'stop', CHILD, ROOT, 'scxneg.slice', check=False)

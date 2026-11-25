@@ -81,8 +81,19 @@ def exercise(loader, report):
     with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
         for name, top in ((names[2], names[0]), (names[3], names[3])):
             worker = name.removesuffix('.slice') + '.service'
-            command('systemd-run', '--quiet', '--collect', '--unit', worker, '--slice', name,
-                    '-p', 'CPUWeight=100', '/usr/bin/sleep', 'infinity')
+            command(
+                'systemd-run',
+                '--quiet',
+                '--collect',
+                '--unit',
+                worker,
+                '--slice',
+                name,
+                '-p',
+                'CPUWeight=100',
+                '/usr/bin/sleep',
+                'infinity',
+            )
             stack.callback(command, 'systemctl', 'stop', top)
         for name in names:
             paths[name] = CGROUP / command('systemctl', 'show', '-P', 'ControlGroup', name).lstrip('/')
@@ -101,7 +112,9 @@ def exercise(loader, report):
         def check_loaders():
             for key, process in processes.items():
                 if process.poll() is not None:
-                    raise RuntimeError(f'{key}: loader exited: {logs[key].read_text(errors="replace")[-5000:]}')
+                    raise RuntimeError(
+                        f'{key}: loader exited: {logs[key].read_text(errors="replace")[-5000:]}'
+                    )
 
         for name, target in attachment.items():
             logs[name] = Path(tmp) / ('root.log' if name == '/' else name + '.log')
@@ -115,7 +128,9 @@ def exercise(loader, report):
 
             def attached():
                 check_loaders()
-                return (target / 'ops').is_file() and 'scx_qmap started:' in logs[name].read_text(errors='replace')
+                return (target / 'ops').is_file() and 'scx_qmap started:' in logs[name].read_text(
+                    errors='replace'
+                )
 
             wait_until(attached, f'{name} at {target}')
         time.sleep(2)
@@ -134,11 +149,16 @@ def exercise(loader, report):
             raise RuntimeError(f'Unexpected nearest scheduler for {leaf}: {ancestor}')
 
         report['inheritance'] = {'leaf': leaf, 'direct_attachments': 0, 'nearest_ancestor': grandchild}
-    wait_until(lambda: not (SCX / 'root').exists() and (SCX / 'state').read_text().strip() == 'disabled',
-               'kernel detach')
+    wait_until(
+        lambda: not (SCX / 'root').exists() and (SCX / 'state').read_text().strip() == 'disabled',
+        'kernel detach',
+    )
     wait_until(lambda: not any(p.exists() for p in paths.values()), 'test cgroups to be removed')
-    report['teardown'] = {'state': 'disabled', 'cgroups_removed': True,
-                          'loader_exit': {k: p.returncode for k, p in processes.items()}}
+    report['teardown'] = {
+        'state': 'disabled',
+        'cgroups_removed': True,
+        'loader_exit': {k: p.returncode for k, p in processes.items()},
+    }
     if any(p.returncode for p in processes.values()):
         raise RuntimeError(f'Loader teardown failed: {report["teardown"]}')
 
@@ -161,21 +181,35 @@ def main():
         return {'supported': 0, 'unsupported': 77, 'unknown': 1}[report['hierarchy']]
     if not args.loader:
         parser.error('the baseline needs a loader')
-    report.update(btf_sha256=sha256(BTF), bpftool=command('bpftool', 'version').splitlines()[0],
-                  harness_sha256=sha256(Path(__file__)), loader_sha256=sha256(args.loader),
-                  cpus_online=Path('/sys/devices/system/cpu/online').read_text().strip(),
-                  vcpu_count=os.cpu_count())
+    report.update(
+        btf_sha256=sha256(BTF),
+        bpftool=command('bpftool', 'version').splitlines()[0],
+        harness_sha256=sha256(Path(__file__)),
+        loader_sha256=sha256(args.loader),
+        cpus_online=Path('/sys/devices/system/cpu/online').read_text().strip(),
+        vcpu_count=os.cpu_count(),
+    )
     if args.image_sha256:
         if not args.provider_revision or not args.repo_revision:
             parser.error('the reference image requires provider and systemd revisions')
         config = Path('/boot') / f'config-{release}'
-        report.update(image_sha256=args.image_sha256, provider_revision=args.provider_revision,
-                      systemd_revision=args.repo_revision, installed_systemd=command('systemctl', '--version').splitlines()[0],
-                      cpu_topology=json.loads(command('lscpu', '--json', '--extended=CPU,CORE,SOCKET,NODE'))['cpus'],
-                      toolchain=command('clang-23', '--version').splitlines()[0],
-                      kernel_sha256=sha256(Path('/boot') / f'vmlinuz-{release}'), kernel_config_sha256=sha256(config),
-                      kernel_config=[line for line in config.read_text().splitlines() if line.startswith(
-                          ('CONFIG_SCHED_CLASS_EXT=', 'CONFIG_EXT_SUB_SCHED=', 'CONFIG_DEBUG_INFO_BTF='))])
+        report.update(
+            image_sha256=args.image_sha256,
+            provider_revision=args.provider_revision,
+            systemd_revision=args.repo_revision,
+            installed_systemd=command('systemctl', '--version').splitlines()[0],
+            cpu_topology=json.loads(command('lscpu', '--json', '--extended=CPU,CORE,SOCKET,NODE'))['cpus'],
+            toolchain=command('clang-23', '--version').splitlines()[0],
+            kernel_sha256=sha256(Path('/boot') / f'vmlinuz-{release}'),
+            kernel_config_sha256=sha256(config),
+            kernel_config=[
+                line
+                for line in config.read_text().splitlines()
+                if line.startswith(
+                    ('CONFIG_SCHED_CLASS_EXT=', 'CONFIG_EXT_SUB_SCHED=', 'CONFIG_DEBUG_INFO_BTF=')
+                )
+            ],
+        )
     try:
         exercise(args.loader, report)
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:

@@ -52,8 +52,11 @@ def snapshot():
         target = ids[-1] if ids else CG.stat().st_ino
         if target in nodes:
             raise RuntimeError(f'multiple kernel attachments to {target}')
-        nodes[target] = {'node': ops.parent.stat().st_ino, 'parent': ids[-2] if len(ids) > 1 else
-                         (CG.stat().st_ino if ids else None), 'ops': ops.read_text().strip()}
+        nodes[target] = {
+            'node': ops.parent.stat().st_ino,
+            'parent': ids[-2] if len(ids) > 1 else (CG.stat().st_ino if ids else None),
+            'ops': ops.read_text().strip(),
+        }
     return nodes
 
 
@@ -70,7 +73,7 @@ def loader(binary, directory, unit, generation, fd, mode):
 def worker():
     Path('/proc/self/comm').write_text('scx05-probe')
     while True:
-        time.sleep(.02)
+        time.sleep(0.02)
 
 
 def link_id(directory, unit):
@@ -96,8 +99,11 @@ def detach(number):
 
 
 def run(build, report):
-    if os.getuid() != 0 or subprocess.run(['systemd-detect-virt', '--vm', '--quiet']).returncode or not \
-            subprocess.run(['systemd-detect-virt', '--container', '--quiet']).returncode:
+    if (
+        os.getuid() != 0
+        or subprocess.run(['systemd-detect-virt', '--vm', '--quiet']).returncode
+        or not subprocess.run(['systemd-detect-virt', '--container', '--quiet']).returncode
+    ):
         raise RuntimeError('root on a dedicated full-system VM is required')
     if (SCX / 'state').read_text().strip() != 'disabled' or (SCX / 'root').exists():
         raise RuntimeError('guest already has an active scheduler')
@@ -116,17 +122,29 @@ def run(build, report):
             dropin.mkdir()
             stack.callback(dropin.rmdir)
         write(dropin / '98-scx09.conf', '[Slice]\nScheduler=partition@.scheduler\n')
-        for unit, scheduler, weight in [('lab', 'partition', 300), ('lab-build', 'batch', 100),
-                                        ('interactive', 'latency', 50), ('lab-idle', 'batch', 100)]:
-            write(UNITS / (unit + '.slice'), f'[Slice]\nScheduler={scheduler}@.scheduler\nCPUWeight={weight}\n')
+        for unit, scheduler, weight in [
+            ('lab', 'partition', 300),
+            ('lab-build', 'batch', 100),
+            ('interactive', 'latency', 50),
+            ('lab-idle', 'batch', 100),
+        ]:
+            write(
+                UNITS / (unit + '.slice'), f'[Slice]\nScheduler={scheduler}@.scheduler\nCPUWeight={weight}\n'
+            )
         for name in ('partition', 'batch', 'latency', 'late'):
-            write(UNITS / (name + '@.scheduler'), '[Scheduler]\n' +
-                  f'ExecStart=/usr/bin/python3 {script} loader {binary} {d} %n\nTimeoutStartSec=20s\n')
+            write(
+                UNITS / (name + '@.scheduler'),
+                '[Scheduler]\n'
+                + f'ExecStart=/usr/bin/python3 {script} loader {binary} {d} %n\nTimeoutStartSec=20s\n',
+            )
         for unit, sl in [(BUILD, WORKSLICE), (INTERACTIVE, 'interactive.slice')]:
             write(UNITS / unit, f'[Service]\nSlice={sl}\nExecStart=/usr/bin/python3 {script} worker\n')
-        write(UNITS / 'scx09-gate@.service', f'[Service]\nSlice={WORKSLICE}\nType=oneshot\n' +
-              f'ExecCondition=/usr/bin/touch {d}/%i.condition\nExecStartPre=/usr/bin/touch {d}/%i.pre\n' +
-              f'ExecStart=/usr/bin/touch {d}/%i.start\n')
+        write(
+            UNITS / 'scx09-gate@.service',
+            f'[Service]\nSlice={WORKSLICE}\nType=oneshot\n'
+            + f'ExecCondition=/usr/bin/touch {d}/%i.condition\nExecStartPre=/usr/bin/touch {d}/%i.pre\n'
+            + f'ExecStart=/usr/bin/touch {d}/%i.start\n',
+        )
 
         # Reload the files exactly once on entry and again after removing them.
         try:
@@ -140,8 +158,14 @@ def run(build, report):
                     assert prop('lab.slice', 'Scheduler') == MIDDLE, 'lost the local binding on lab.slice'
                     assert prop(LEAF, 'ParentScheduler') == MIDDLE, 'leaf bypassed its configured parent'
                     wait_for(lambda: len(snapshot()) == 4, 'warm four-node tree')
-                    ids = {n: cgroup(s).stat().st_ino for n, s in [(MIDDLE, 'lab.slice'), (LEAF, 'lab-build.slice'),
-                                                                   (SIBLING, 'interactive.slice')]}
+                    ids = {
+                        n: cgroup(s).stat().st_ino
+                        for n, s in [
+                            (MIDDLE, 'lab.slice'),
+                            (LEAF, 'lab-build.slice'),
+                            (SIBLING, 'interactive.slice'),
+                        ]
+                    }
                     ids[ROOT] = CG.stat().st_ino
                     build_pid, side_pid = (int(prop(u, 'MainPID')) for u in [BUILD, INTERACTIVE])
                     healthy = snapshot()
@@ -149,7 +173,9 @@ def run(build, report):
 
                     def progress(pid, node):
                         initial = counter(pid).get(node, 0)
-                        wait_for(lambda: counter(pid).get(node, 0) > initial + 1, f'{pid} dispatch on {node}')
+                        wait_for(
+                            lambda: counter(pid).get(node, 0) > initial + 1, f'{pid} dispatch on {node}'
+                        )
                         return [initial, counter(pid)[node]]
 
                     def hold(unit):
@@ -180,13 +206,24 @@ def run(build, report):
                     assert restored[ids[LEAF]]['parent'] == ids[MIDDLE]
                     assert int(prop(BUILD, 'MainPID')) == build_pid
                     build_delta = progress(build_pid, restored[ids[LEAF]]['node'])
-                    exits = [int(n) for n in re.findall(r'sub_cgroup_id (\d+)', (trace / 'trace').read_text())]
+                    exits = [
+                        int(n) for n in re.findall(r'sub_cgroup_id (\d+)', (trace / 'trace').read_text())
+                    ]
                     assert exits == [ids[LEAF], ids[MIDDLE]], exits
                     starts = [line.split()[0] for line in (d / 'starts').read_text().splitlines()]
                     assert starts[-2:] == [MIDDLE, LEAF] and IDLE not in starts
-                    report['restart'] = dict(before=healthy, held=between, after=restored, detach_order=exits,
-                                             restoration=starts[-2:], sibling_link=side_link, sibling_pid=side_pid,
-                                             build_pid=build_pid, sibling_dispatch=sibling_delta, build_dispatch=build_delta)
+                    report['restart'] = dict(
+                        before=healthy,
+                        held=between,
+                        after=restored,
+                        detach_order=exits,
+                        restoration=starts[-2:],
+                        sibling_link=side_link,
+                        sibling_pid=side_pid,
+                        build_pid=build_pid,
+                        sibling_dispatch=sibling_delta,
+                        build_dispatch=build_delta,
+                    )
 
                     # Install the extra.slice declaration only after a different live instance owns
                     # a descendant of its cgroup. The slice is first loaded on demand.
@@ -199,19 +236,37 @@ def run(build, report):
                             assert foreign.ready(foreign.status(), foreign_target)
                             original = snapshot()[foreign_target.stat().st_ino]
                             assert original['parent'] == ids[ROOT]
-                            write(UNITS / 'extra.slice', '[Slice]\nScheduler=late@.scheduler\nCPUWeight=100\n')
-                            assert ctl('start', LATE, check=False).returncode != 0 and state(LATE) == 'failed'
+                            write(
+                                UNITS / 'extra.slice', '[Slice]\nScheduler=late@.scheduler\nCPUWeight=100\n'
+                            )
+                            assert (
+                                ctl('start', LATE, check=False).returncode != 0 and state(LATE) == 'failed'
+                            )
                             invocation = prop(LATE, 'InvocationID')
                             subprocess.run(['journalctl', '--sync'], check=True, timeout=10)
-                            failures = subprocess.check_output(['journalctl', '-b', '--no-pager', '-o', 'json',
-                                                                '_PID=1', f'UNIT={LATE}', f'INVOCATION_ID={invocation}',
-                                                                f'ERRNO={errno.EBUSY}'], text=True)
+                            failures = subprocess.check_output(
+                                [
+                                    'journalctl',
+                                    '-b',
+                                    '--no-pager',
+                                    '-o',
+                                    'json',
+                                    '_PID=1',
+                                    f'UNIT={LATE}',
+                                    f'INVOCATION_ID={invocation}',
+                                    f'ERRNO={errno.EBUSY}',
+                                ],
+                                text=True,
+                            )
                             assert failures.strip() and foreign.ready(foreign.status(), foreign_target)
                             assert snapshot()[foreign_target.stat().st_ino] == original
-                            report['intermediate_conflict'] = dict(target=foreign_target.stat().st_ino,
-                                                                  preserved=original, link=foreign.link_id,
-                                                                  errno=errno.EBUSY,
-                                                                  journal=json.loads(failures.splitlines()[0])['MESSAGE'])
+                            report['intermediate_conflict'] = dict(
+                                target=foreign_target.stat().st_ino,
+                                preserved=original,
+                                link=foreign.link_id,
+                                errno=errno.EBUSY,
+                                journal=json.loads(failures.splitlines()[0])['MESSAGE'],
+                            )
                     finally:
                         foreign_target.rmdir()
                         ctl('stop', 'extra.slice', check=False)
@@ -232,7 +287,9 @@ def run(build, report):
                             fallback_dispatch = progress(build_pid, tree[ids[fallback]]['node'])
                         else:
                             assert not tree
-                            assert re.search(r'^ext.enabled\s*:\s*0$', Path(f'/proc/{build_pid}/sched').read_text(), re.M)
+                            assert re.search(
+                                r'^ext.enabled\s*:\s*0$', Path(f'/proc/{build_pid}/sched').read_text(), re.M
+                            )
                             fallback_dispatch = None
                         effective = prop(WORKSLICE, 'EffectiveScheduler')
                         assert effective == (fallback or 'kernel'), (case, effective, fallback)
@@ -247,10 +304,18 @@ def run(build, report):
                         current = snapshot()
                         assert set(current) == set(healthy) and int(prop(BUILD, 'MainPID')) == build_pid
                         fresh = launches() - before_launches
-                        assert fresh == Counter([LEAF] if lost == LEAF else [ROOT, MIDDLE, LEAF, SIBLING]), fresh
-                        report[case + '_loss'] = dict(fallback=tree, effective=effective, launches=fresh,
-                                                    fallback_dispatch=fallback_dispatch, restored=current,
-                                                    markers=markers(case), build_pid=build_pid)
+                        assert fresh == Counter([LEAF] if lost == LEAF else [ROOT, MIDDLE, LEAF, SIBLING]), (
+                            fresh
+                        )
+                        report[case + '_loss'] = dict(
+                            fallback=tree,
+                            effective=effective,
+                            launches=fresh,
+                            fallback_dispatch=fallback_dispatch,
+                            restored=current,
+                            markers=markers(case),
+                            build_pid=build_pid,
+                        )
             finally:
                 (trace / 'events/sched_ext/sched_ext_exit/enable').write_text('0')
                 trace.rmdir()

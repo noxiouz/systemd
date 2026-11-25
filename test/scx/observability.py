@@ -29,7 +29,7 @@ def bus(*args):
 
 
 def property_value(unit, interface, prop):
-    path, = bus('call', MANAGER, '/org/freedesktop/systemd1', MANAGER + '.Manager', 'GetUnit', 's', unit)
+    (path,) = bus('call', MANAGER, '/org/freedesktop/systemd1', MANAGER + '.Manager', 'GetUnit', 's', unit)
     return bus('get-property', MANAGER, path, interface, prop)
 
 
@@ -42,14 +42,20 @@ def compare(unit, interface, prop, expected):
 
 
 def run(binary, rows):
-    if os.getuid() != 0 or subprocess.run(['systemd-detect-virt', '--quiet', '--vm']).returncode or \
-            not subprocess.run(['systemd-detect-virt', '--quiet', '--container']).returncode:
+    if (
+        os.getuid() != 0
+        or subprocess.run(['systemd-detect-virt', '--quiet', '--vm']).returncode
+        or not subprocess.run(['systemd-detect-virt', '--quiet', '--container']).returncode
+    ):
         raise RuntimeError('exclusive full-system guest required')
     assert (SCX / 'state').read_text().strip() == 'disabled'
-    rows.append(dict(case='kernel-default', observation=compare('-.slice', SLICE, 'EffectiveScheduler', 'kernel')))
+    rows.append(
+        dict(case='kernel-default', observation=compare('-.slice', SLICE, 'EffectiveScheduler', 'kernel'))
+    )
     script = str(Path(binary).resolve())
     units = ['lab.slice', 'lab-build.slice', 'lab-build-ci.slice']
     with ExitStack() as files:
+
         def config(file, body):
             with file.open('x') as out:
                 out.write(body)
@@ -57,7 +63,10 @@ def run(binary, rows):
 
         workload = 'scx-observe-foreign.service'
         marker = Path(files.enter_context(tempfile.TemporaryDirectory(dir='/run'))) / 'ran'
-        config(UNITS / workload, f'[Service]\nSlice={units[-1]}\nType=oneshot\nExecStart=/usr/bin/touch {marker}\n')
+        config(
+            UNITS / workload,
+            f'[Service]\nSlice={units[-1]}\nType=oneshot\nExecStart=/usr/bin/touch {marker}\n',
+        )
         root = UNITS / '-.slice.d'
         if not root.exists():
             root.mkdir()
@@ -90,9 +99,20 @@ def run(binary, rows):
             origin = leaf.stat().st_ino
             algorithm = (leaf / 'ops').read_text().strip()
             owned = property_value(LEAF, SCHEDULER, 'LinkID')
-            rows.append(dict(case='managed', link=owned, node=origin, parent=middle.stat().st_ino,
-                             configured=LEAF, effective=LEAF, inherited=units[2], comparisons=observations,
-                             listed=listing.splitlines(), status=status.splitlines()))
+            rows.append(
+                dict(
+                    case='managed',
+                    link=owned,
+                    node=origin,
+                    parent=middle.stat().st_ino,
+                    configured=LEAF,
+                    effective=LEAF,
+                    inherited=units[2],
+                    comparisons=observations,
+                    listed=listing.splitlines(),
+                    status=status.splitlines(),
+                )
+            )
 
             with foreign(script, target / units[-1]) as foreign_link:
                 compare(units[-1], SLICE, 'EffectiveScheduler', 'foreign')
@@ -107,12 +127,14 @@ def run(binary, rows):
             assert link >= 0
             try:
                 cgroup = ctl('show', '-P', 'ControlGroup', LEAF).stdout.strip()
-                provider, = (CG / cgroup.lstrip('/') / 'cgroup.procs').read_text().split()
+                (provider,) = (CG / cgroup.lstrip('/') / 'cgroup.procs').read_text().split()
                 pid = int(provider)
                 os.kill(pid, signal.SIGSTOP)
                 try:
-                    wait_for(lambda: Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] == 'T',
-                             'stopped loader')
+                    wait_for(
+                        lambda: Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] == 'T',
+                        'stopped loader',
+                    )
                     assert libbpf.bpf_link_detach(link) == 0
                     wait_for(lambda: not leaf.exists(), 'kernel eviction')
                     os.kill(pid, 0)
@@ -127,20 +149,38 @@ def run(binary, rows):
                 observations.append(compare(LEAF, SCHEDULER, 'Result', 'kernel-exit'))
                 status = ctl('status', '--no-pager', LEAF, check=False)
                 assert status.returncode == 3 and f'Failure: {reason}' in status.stdout
-                rows.append(dict(case='evicted', stopped_live_provider=pid, fallback_node=middle.stat().st_ino, effective=MIDDLE,
-                                 terminal=reason, owned_link_fd_still_open=link_id(link),
-                                 comparisons=observations, status=status.stdout.splitlines()))
+                rows.append(
+                    dict(
+                        case='evicted',
+                        stopped_live_provider=pid,
+                        fallback_node=middle.stat().st_ino,
+                        effective=MIDDLE,
+                        terminal=reason,
+                        owned_link_fd_still_open=link_id(link),
+                        comparisons=observations,
+                        status=status.stdout.splitlines(),
+                    )
+                )
             finally:
                 os.close(link)
 
             with foreign(script, target) as foreign_link:
                 assert (leaf / 'ops').read_text().strip() == algorithm
                 assert origin != leaf.stat().st_ino and owned != link_id(foreign_link)
-                observations = [compare(units[2], SLICE, 'ConfiguredScheduler', LEAF),
-                                compare(units[2], SLICE, 'EffectiveScheduler', 'foreign')]
-                rows.append(dict(case='foreign-replacement', node=leaf.stat().st_ino,
-                                 link=link_id(foreign_link), algorithm=algorithm, effective='foreign',
-                                 comparisons=observations))
+                observations = [
+                    compare(units[2], SLICE, 'ConfiguredScheduler', LEAF),
+                    compare(units[2], SLICE, 'EffectiveScheduler', 'foreign'),
+                ]
+                rows.append(
+                    dict(
+                        case='foreign-replacement',
+                        node=leaf.stat().st_ino,
+                        link=link_id(foreign_link),
+                        algorithm=algorithm,
+                        effective='foreign',
+                        comparisons=observations,
+                    )
+                )
         finally:
             for unit in (LEAF, MIDDLE, ROOT, *reversed(units)):
                 ctl('stop', unit, check=False)

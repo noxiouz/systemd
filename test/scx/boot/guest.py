@@ -26,8 +26,12 @@ def put(path, content):
 
 
 def marker(kind, **fields):
-    msg = dict(event=kind, usec=time.monotonic_ns() // 1000,
-               boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(), **fields)
+    msg = dict(
+        event=kind,
+        usec=time.monotonic_ns() // 1000,
+        boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+        **fields,
+    )
     with Path('/dev/console').open('w') as console:
         print('SCXBOOT ' + json.dumps(msg, sort_keys=True), file=console, flush=True)
 
@@ -35,13 +39,23 @@ def marker(kind, **fields):
 def metadata(image_sha256):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from baseline import BTF, probe, sha256
+
     release = platform.release()
     config = Path('/boot') / f'config-{release}'
-    result = dict(kernel=release, image_sha256=image_sha256,
-                  kernel_sha256=sha256(config.with_name(f'vmlinuz-{release}')), kernel_config_sha256=sha256(config),
-                  btf_sha256=sha256(BTF), probe=probe(BTF), manager=os.readlink('/proc/1/exe'),
-                  kernel_config=[s for s in config.read_text().splitlines()
-                                 if s.startswith(('CONFIG_SCHED_CLASS_EXT=', 'CONFIG_EXT_SUB_SCHED=', 'CONFIG_DEBUG_INFO_BTF='))])
+    result = dict(
+        kernel=release,
+        image_sha256=image_sha256,
+        kernel_sha256=sha256(config.with_name(f'vmlinuz-{release}')),
+        kernel_config_sha256=sha256(config),
+        btf_sha256=sha256(BTF),
+        probe=probe(BTF),
+        manager=os.readlink('/proc/1/exe'),
+        kernel_config=[
+            s
+            for s in config.read_text().splitlines()
+            if s.startswith(('CONFIG_SCHED_CLASS_EXT=', 'CONFIG_EXT_SUB_SCHED=', 'CONFIG_DEBUG_INFO_BTF='))
+        ],
+    )
     if result['probe']['hierarchy'] != 'supported':
         raise RuntimeError('The positive guest must have inspectable hierarchy support')
     print(json.dumps(result, indent=2))
@@ -64,25 +78,41 @@ def install(provider):
 def generate(out):
     if Path('/etc/initrd-release').exists():
         return
-    cases = [a.split('=', 1)[1] for a in Path('/proc/cmdline').read_text().split() if a.startswith('scx.case=')]
+    cases = [
+        a.split('=', 1)[1] for a in Path('/proc/cmdline').read_text().split() if a.startswith('scx.case=')
+    ]
     if len(cases) != 1 or cases[0] not in ('delay', 'missing', 'control'):
         return
     case = cases[0]
     if case != 'control':
         put(out / '-.slice.d/50-scxboot.conf', '[Slice]\nScheduler=scxboot@.scheduler\n')
         loader = 'missing-provider' if case == 'missing' else 'wait-loader'
-        put(out / 'scxboot@.scheduler', f'[Unit]\nRequiresMountsFor={MOUNT}\n'
-            f'[Scheduler]\nExecStart={MOUNT}/{loader}\nTimeoutStartSec=8s\n')
-        put(out / 'scxloader.mount', f'[Unit]\nDefaultDependencies=no\n'
-            f'[Mount]\nWhat={PAYLOAD}\nWhere={MOUNT}\nType=none\nOptions=bind\n')
-    put(out / 'scxboot-workload.service', '[Unit]\nDescription=SCX cold boot workload\nDefaultDependencies=no\n'
-        f'[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart={BASE}/guest workload\n')
-    put(out / 'scxboot.target', '[Unit]\nDescription=SCX cold boot target\nDefaultDependencies=no\n'
-        'Requires=scxboot-workload.service\nAfter=scxboot-workload.service\n')
+        put(
+            out / 'scxboot@.scheduler',
+            f'[Unit]\nRequiresMountsFor={MOUNT}\n'
+            f'[Scheduler]\nExecStart={MOUNT}/{loader}\nTimeoutStartSec=8s\n',
+        )
+        put(
+            out / 'scxloader.mount',
+            f'[Unit]\nDefaultDependencies=no\n'
+            f'[Mount]\nWhat={PAYLOAD}\nWhere={MOUNT}\nType=none\nOptions=bind\n',
+        )
+    put(
+        out / 'scxboot-workload.service',
+        '[Unit]\nDescription=SCX cold boot workload\nDefaultDependencies=no\n'
+        f'[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart={BASE}/guest workload\n',
+    )
+    put(
+        out / 'scxboot.target',
+        '[Unit]\nDescription=SCX cold boot target\nDefaultDependencies=no\n'
+        'Requires=scxboot-workload.service\nAfter=scxboot-workload.service\n',
+    )
 
 
 def wait_loader():
-    mounted = os.path.ismount(MOUNT) or any(l.split()[4] == str(MOUNT) for l in Path('/proc/self/mountinfo').read_text().splitlines())
+    mounted = os.path.ismount(MOUNT) or any(
+        line.split()[4] == str(MOUNT) for line in Path('/proc/self/mountinfo').read_text().splitlines()
+    )
     if not mounted:
         raise RuntimeError('The loader prerequisite is missing')
     marker('loader-delayed', mount=str(MOUNT), generation=sys.argv[1])
@@ -99,9 +129,17 @@ def workload():
     ctl = shutil.which('systemctl', path='/usr/local/bin:/usr/bin')
     enter = '0'
     if ops.exists():
-        enter = subprocess.check_output([ctl, 'show', '-P', 'ActiveEnterTimestampMonotonic', ROOT_UNIT], text=True).strip()
-    marker('workload-finished', first_usec=start, kernel_state=state, ops=ops.read_text().strip() if ops.exists() else '',
-           active_enter_usec=int(enter), manager=os.readlink('/proc/1/exe'))
+        enter = subprocess.check_output(
+            [ctl, 'show', '-P', 'ActiveEnterTimestampMonotonic', ROOT_UNIT], text=True
+        ).strip()
+    marker(
+        'workload-finished',
+        first_usec=start,
+        kernel_state=state,
+        ops=ops.read_text().strip() if ops.exists() else '',
+        active_enter_usec=int(enter),
+        manager=os.readlink('/proc/1/exe'),
+    )
 
 
 if __name__ == '__main__':
