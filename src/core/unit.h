@@ -122,10 +122,11 @@ typedef enum UnitDependencyMask {
         /* A dependency for units in slices assigned by directly setting Slice= */
         UNIT_DEPENDENCY_SLICE_PROPERTY     = 1 << 8,
 
-        /* Start ordering and child membership of a scheduler attachment. */
+        /* Configured scheduler for the next start and physical parent of a live attachment. */
         UNIT_DEPENDENCY_SCHEDULER          = 1 << 9,
+        UNIT_DEPENDENCY_SCHEDULER_RUNTIME  = 1 << 10,
 
-        _UNIT_DEPENDENCY_MASK_FULL         = (1 << 10) - 1,
+        _UNIT_DEPENDENCY_MASK_FULL         = (1 << 11) - 1,
 } UnitDependencyMask;
 
 /* The Unit's dependencies[] hashmaps use this structure as value. It has the same size as a void pointer, and thus can

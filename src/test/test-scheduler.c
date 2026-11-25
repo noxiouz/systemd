@@ -96,6 +96,7 @@ TEST(scheduler_transactions) {
         Unit *a = load(m, "workload@a.service"), *b = load(m, "workload@b.service");
         Unit *middle = load(m, "partition@lab.scheduler"), *leaf = load(m, "batch@lab-build.scheduler");
         Unit *target = UNIT_DEREF(SCHEDULER(leaf)->target_slice);
+        leaf->stop_when_unneeded = true;
         ASSERT_EQ(unit_active_state(target), UNIT_INACTIVE);
         ASSERT_OK(manager_add_job(m, JOB_START, a, JOB_REPLACE, NULL, NULL));
         shared = ASSERT_PTR(leaf->job);
@@ -128,6 +129,7 @@ TEST(scheduler_transactions) {
 
         check_markers(runtime, "a", false);
         check_markers(runtime, "b", true);
+        ASSERT_FALSE(unit_is_unneeded(leaf));
         ASSERT_STRV_EQ(attempts, STRV_MAKE("partition@-.scheduler", "partition@lab.scheduler", "batch@lab-build.scheduler"));
 
         /* Explicit stop is independent of an already-admitted workload. Hold a reference to its PID. */
@@ -178,6 +180,8 @@ TEST(scheduler_transactions) {
         ASSERT_OK(manager_add_job(m, JOB_STOP, b, JOB_REPLACE, NULL, NULL));
         wait_for_unit(a, UNIT_INACTIVE);
         wait_for_unit(b, UNIT_INACTIVE);
+        ASSERT_TRUE(unit_is_unneeded(leaf));
+        ASSERT_TRUE(leaf->in_stop_when_unneeded_queue);
         attempts = strv_free(attempts);
 }
 

@@ -182,12 +182,18 @@ def run(binary, rows):
             ctl('reset-failed', BUILD)
             ctl('start', BUILD)
             before = snapshot(d, tree)
+            limit = UNITS / f'{BUILD}.d'
+            limit.mkdir()
+            files.callback(limit.rmdir)
+            config(limit / 'stop.conf', '[Unit]\nStopWhenUnneeded=yes\n')
             (UNITS / GUEST_SLICES[1]).write_text('[Slice]\nScheduler=scxnew@.scheduler\n')
             ctl('daemon-reload')
             ready(tree)
             assert show(GUEST_SLICES[1], 'ConfiguredScheduler') == NEW
             assert show(GUEST_SLICES[-1], 'EffectiveScheduler') == BUILD
             assert snapshot(d, tree) == before
+            assert BUILD in show(WORK, 'Wants').split() and NEW not in show(WORK, 'Wants').split()
+            assert not ctl('list-jobs', '--no-legend', '--plain', BUILD).stdout.strip()
             ctl('stop', BUILD)
             ctl('start', NEW)
             assert show(GUEST_SLICES[-1], 'EffectiveScheduler') == NEW

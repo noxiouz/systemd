@@ -48,6 +48,8 @@ Unit* unit_get_start_scheduler(Unit *u) {
 }
 
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent) {
+        int r;
+
         assert(parent);
 
         UnitDependencyInfo previous = { .data = hashmap_get(unit_get_dependencies(u, UNIT_AFTER), parent) };
@@ -58,11 +60,11 @@ int unit_set_scheduler_dependencies(Unit *u, Unit *parent) {
         /* A reload can change the parent of the next start while the previous attachment remains live.
          * Keep the old ordering through stop; replace it when admitting the new invocation. */
         unit_remove_dependencies(u, UNIT_DEPENDENCY_SCHEDULER);
-        if (u->type == UNIT_SCHEDULER)
-                return unit_add_two_dependencies(u, UNIT_AFTER, UNIT_PART_OF, parent,
-                                                 /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+        r = unit_add_two_dependencies(u, UNIT_WANTS, UNIT_AFTER, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+        if (r < 0 || u->type != UNIT_SCHEDULER)
+                return r;
 
-        return unit_add_dependency(u, UNIT_AFTER, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+        return unit_add_dependency(u, UNIT_PART_OF, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
 }
 
 void scheduler_set_state(Scheduler *s, SchedulerState state) {
