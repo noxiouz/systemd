@@ -56,9 +56,9 @@
     files. The common configuration items are configured
     in the generic [Unit] and [Install] sections. The
     slice specific configuration options are configured in
-    the [Slice] section. Currently, only generic resource control settings
-    as described in
-    <citerefentry><refentrytitle>systemd.resource-control</refentrytitle><manvolnum>5</manvolnum></citerefentry> are allowed.
+    the [Slice] section. Generic resource control settings are documented
+    in
+    <citerefentry><refentrytitle>systemd.resource-control</refentrytitle><manvolnum>5</manvolnum></citerefentry>.
     </para>
 
     <para>See the <ulink
@@ -110,6 +110,17 @@
     <para>The options specific to the [Slice] section of slice units are the following:</para>
 
     <variablelist class='unit-directives'>
+      <varlistentry>
+        <term><varname>Scheduler=</varname></term>
+        <listitem><para>Selects a sched_ext scheduler for this slice. Takes a scheduler unit template
+        (for example <filename>batch@.scheduler</filename>) or its instance for this slice. The manager
+        expands the template using the slice name without its suffix. Child slices inherit the nearest
+        selection unless they declare their own scheduler. An empty assignment clears the local selection
+        and restores inheritance. See
+        <citerefentry><refentrytitle>systemd.scheduler</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para>
+        <xi:include href="version-info.xml" xpointer="v263"/></listitem>
+      </varlistentry>
+
       <varlistentry>
         <term><varname>ConcurrencyHardMax=</varname></term>
         <term><varname>ConcurrencySoftMax=</varname></term>

@@ -2080,6 +2080,7 @@ static int unit_file_load(
                          "-Device\0"
                          "-Mount\0"
                          "-Path\0"
+                         "-Scheduler\0"
                          "-Scope\0"
                          "-Service\0"
                          "-Slice\0"

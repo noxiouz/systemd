@@ -1,0 +1,92 @@
+<?xml version='1.0'?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
+  "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
+
+<refentry id="systemd.scheduler" xmlns:xi="http://www.w3.org/2001/XInclude">
+  <refentryinfo>
+    <title>systemd.scheduler</title>
+    <productname>systemd</productname>
+  </refentryinfo>
+  <refmeta>
+    <refentrytitle>systemd.scheduler</refentrytitle>
+    <manvolnum>5</manvolnum>
+  </refmeta>
+  <refnamediv>
+    <refname>systemd.scheduler</refname>
+    <refpurpose>sched_ext scheduler unit configuration</refpurpose>
+  </refnamediv>
+  <refsynopsisdiv>
+    <para><filename><replaceable>provider</replaceable>@<replaceable>slice</replaceable>.scheduler</filename></para>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+    <para>A scheduler unit runs a provider that attaches a BPF CPU scheduler to a cgroup v2 subtree. The
+    instance name identifies the target slice without its <literal>.slice</literal> suffix. For example,
+    <filename>batch@build.scheduler</filename>
+    targets <filename>build.slice</filename>. The slice selects this instance using <varname>Scheduler=</varname>
+    as described in <citerefentry><refentrytitle>systemd.slice</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para>
+
+    <para>Starting a service in the subtree pulls in the target slice and its selected schedulers.
+    The system manager starts each parent before its children and waits for confirmation of the attachments
+    before starting service commands. The root slice selects the host scheduler. Each parent provider must
+    support child attachments to run schedulers further down the tree. Stopping a scheduler detaches its
+    active descendants. Services already running continue under the closest surviving ancestor scheduler.
+    Detaching the root restores the kernel's default scheduling policy.</para>
+  </refsect1>
+
+  <refsect1>
+    <title>Options</title>
+    <para>The [Scheduler] section accepts the following settings:</para>
+    <variablelist class="unit-directives">
+      <varlistentry>
+        <term><varname>ExecStart=</varname></term>
+        <listitem><para>The provider command to run. Exactly one command is required. The provider must
+        implement the <ulink url="https://systemd.io/SCHEDULER_PROVIDER_PROTOCOL/">Scheduler Provider Protocol</ulink>.
+        An absolute executable path adds mount dependencies for that path.</para>
+        <xi:include href="version-info.xml" xpointer="v263"/></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><varname>TimeoutStartSec=</varname></term>
+        <listitem><para>Time to wait for the provider to attach and confirm readiness. Defaults to
+        <varname>DefaultTimeoutStartSec=</varname> from
+        <citerefentry><refentrytitle>systemd-system.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para>
+        <xi:include href="version-info.xml" xpointer="v263"/></listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+    <example>
+      <title>Run a separate scheduler for build services</title>
+      <programlisting># /etc/systemd/system/partition@.scheduler
+[Scheduler]
+ExecStart=/usr/local/libexec/partition-provider
+
+# /etc/systemd/system/-.slice.d/scheduler.conf
+[Slice]
+Scheduler=partition@.scheduler
+
+# /etc/systemd/system/build.slice
+[Slice]
+Scheduler=partition@.scheduler
+
+# /etc/systemd/system/compile.service
+[Service]
+Slice=build.slice
+ExecStart=/usr/local/bin/compile</programlisting>
+      <para>Starting <filename>compile.service</filename> activates <filename>partition@-.scheduler</filename>
+      followed by <filename>partition@build.scheduler</filename>. Inspect the latter with
+      <command>systemctl status partition@build.scheduler</command>.</para>
+    </example>
+
+    <para>For a host root scheduler, make the provider and its dependencies available at switch-root.
+    Use <varname>RequiresMountsFor=</varname> for additional paths as necessary. A service that needs the
+    scheduler cannot make that scheduler's loader available. With a systemd-based initrd supporting
+    <varname>rd.systemd.break=pre-switch-root</varname>, use its console to restore the executable under
+    <filename>/sysroot</filename> or clear <varname>Scheduler=</varname> in the affected host slices
+    before continuing boot.</para>
+  </refsect1>
+</refentry>

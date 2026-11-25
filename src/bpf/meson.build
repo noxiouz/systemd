@@ -372,6 +372,21 @@ bpf_programs = [
         },
 ]
 
+# The test fixture uses struct_ops links and an arena on kernels with CID-based sched_ext.
+have_test_scx = want_tests != 'false' and conf.get('BPF_FRAMEWORK') == 1 and \
+                libbpf.version().version_compare('>= 1.5') and bpftool.version().version_compare('>= 7.4') and \
+                cc.has_header_symbol('linux/bpf.h', 'BPF_MAP_TYPE_ARENA')
+conf.set10('HAVE_TEST_SCHED_EXT', have_test_scx)
+if have_test_scx
+        foreach variant : ['root', 'child', 'cid']
+                bpf_programs += {
+                        'source' : files('../test/sched-ext-' + variant + '.bpf.c'),
+                        'condition' : 'HAVE_TEST_SCHED_EXT',
+                        'depend_files' : files('../test/sched-ext-test.bpf.h', '../test/sched-ext-test.h'),
+                }
+        endforeach
+endif
+
 bpf_programs_by_name = {}
 bpf_sources = []
 

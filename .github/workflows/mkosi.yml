@@ -260,6 +260,13 @@ jobs:
             --num-processes "$(($(nproc) - 1))" \
             "${MAX_LINES[@]}"
 
+      - name: Require the sched_ext hierarchy test on Arch's rolling kernel
+        if: matrix.distro == 'arch' && matrix.release == 'rolling'
+        run: |
+          sudo jq -en 'any(inputs | select(.name | endswith("TEST-99-SCHED-EXT")) | .stdout | split("\n")[];
+                           test("^ok [0-9]+ - TEST-99-SCHED-EXT[.]hierarchy[.]sh$"))' \
+            build/meson-logs/testlog-integration.json
+
       - name: Fix journal ownership
         if: failure() && (github.repository == 'systemd/systemd' || github.repository == 'systemd/systemd-stable')
         run: sudo chown -R "$(id -u):$(id -g)" build/test/journal build/meson-logs || true

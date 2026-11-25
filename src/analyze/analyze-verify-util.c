@@ -210,6 +210,9 @@ static int verify_executables(Unit *u, const char *root) {
 
         assert(u);
 
+        if (u->type == UNIT_SCHEDULER)
+                RET_GATHER(r, verify_executable(u, SCHEDULER(u)->exec_start, root));
+
         if (u->type == UNIT_SERVICE)
                 FOREACH_ELEMENT(i, SERVICE(u)->exec_command)
                         LIST_FOREACH(command, j, *i)

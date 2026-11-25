@@ -623,6 +623,13 @@ executables += [
                 'suite' : 'libudev',
         },
 
+        test_template + {
+                'sources' : files('test-sched-ext-provider.c'),
+                'dependencies' : have_test_scx ? [libbpf_cflags] : [],
+                'bpf_programs' : ['sched-ext-root', 'sched-ext-child', 'sched-ext-cid'],
+                'type' : 'manual',
+        },
+
         # Tests that link to libcore, i.e. tests for pid1 code.
         core_test_template + {
                 'sources' : files('test-bpf-devices.c'),
@@ -681,6 +688,13 @@ executables += [
         },
         core_test_template + {
                 'sources' : files('test-engine.c'),
+                'dependencies' : common_test_dependencies,
+        },
+        core_test_template + {
+                'sources' : files('test-scheduler.c'),
+                'type' : 'manual', # Registered in test/meson.build with the executor dependency.
+                # The test supplies its own asynchronous backend. Keep PID 1 free of test hooks.
+                'link_with' : [libcore_static, libshared],
                 'dependencies' : common_test_dependencies,
         },
         core_test_template + {

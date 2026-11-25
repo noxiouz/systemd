@@ -1,9 +1,13 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
+#include "alloc-util.h"
 #include "bus-get-properties.h"
 #include "dbus-cgroup.h"
 #include "dbus-slice.h"
 #include "dbus-util.h"
+#include "fileio.h"
+#include "manager.h"
+#include "scheduler.h"
 #include "slice.h"
 #include "string-util.h"
 #include "unit.h"
@@ -28,8 +32,52 @@ static int property_get_currently_active(
                         (uint32_t) slice_get_currently_active(s, /* ignore= */ NULL, /* with_pending= */ false));
 }
 
+static int property_get_slice_scheduler(
+                sd_bus *bus,
+                const char *path,
+                const char *interface,
+                const char *property,
+                sd_bus_message *reply,
+                void *userdata,
+                sd_bus_error *reterr_error) {
+
+        Slice *s = ASSERT_PTR(userdata);
+        const char *value;
+        int r;
+
+        if (streq(property, "Scheduler") || streq(property, "ConfiguredScheduler")) {
+                Unit *configured = streq(property, "Scheduler") ?
+                        UNIT_DEREF(s->scheduler) : slice_get_configured_scheduler(s);
+                value = configured ? configured->id : NULL;
+        } else {
+                _cleanup_free_ char *state = NULL;
+
+                r = read_one_line_file("/sys/kernel/sched_ext/state", &state);
+                if (r == -ENOENT || (r >= 0 && streq(state, "disabled")))
+                        value = "kernel";
+                else if (r < 0 || !streq(state, "enabled"))
+                        value = "unknown";
+                else if (unit_active_state(UNIT(s)) != UNIT_ACTIVE)
+                        value = "inactive";
+                else if (MANAGER_IS_USER(UNIT(s)->manager))
+                        value = "foreign";
+                else {
+                        Unit *effective;
+                        r = slice_get_effective_scheduler(s, &effective);
+                        if (r == -ENOMEM)
+                                return r;
+                        value = r < 0 ? "unknown" : effective ? effective->id : "foreign";
+                }
+        }
+
+        return sd_bus_message_append(reply, "s", value);
+}
+
 const sd_bus_vtable bus_slice_vtable[] = {
         SD_BUS_VTABLE_START(0),
+        SD_BUS_PROPERTY("Scheduler", "s", property_get_slice_scheduler, 0, 0),
+        SD_BUS_PROPERTY("ConfiguredScheduler", "s", property_get_slice_scheduler, 0, 0),
+        SD_BUS_PROPERTY("EffectiveScheduler", "s", property_get_slice_scheduler, 0, 0),
         /* The following are currently constant, but we should change that eventually (i.e. open them up via
          * systemctl set-property), hence they aren't marked as constant */
         SD_BUS_PROPERTY("ConcurrencyHardMax", "u", bus_property_get_unsigned, offsetof(Slice, concurrency_hard_max), 0),

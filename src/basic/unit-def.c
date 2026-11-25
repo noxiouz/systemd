@@ -52,6 +52,7 @@ const char* unit_dbus_interface_from_type(UnitType t) {
                 [UNIT_PATH]      = "org.freedesktop.systemd1.Path",
                 [UNIT_SLICE]     = "org.freedesktop.systemd1.Slice",
                 [UNIT_SCOPE]     = "org.freedesktop.systemd1.Scope",
+                [UNIT_SCHEDULER] = "org.freedesktop.systemd1.Scheduler",
         };
 
         if (t < 0)
@@ -92,6 +93,7 @@ static const char* const unit_type_table[_UNIT_TYPE_MAX] = {
         [UNIT_PATH]      = "path",
         [UNIT_SLICE]     = "slice",
         [UNIT_SCOPE]     = "scope",
+        [UNIT_SCHEDULER] = "scheduler",
 };
 
 DEFINE_STRING_TABLE_LOOKUP(unit_type, UnitType);

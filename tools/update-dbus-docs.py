@@ -210,6 +210,22 @@ def xml_to_text(destination, xml, *, only_interface=None):
     return file.getvalue(), declarations, interfaces
 
 
+def introspect(executable, interface):
+    argv = [f'{arguments.build_dir}/{executable}', f'--bus-introspect={interface}']
+    print(f'COMMAND: {shlex_join(argv)}')
+    return etree.fromstring(subprocess.check_output(argv), parser=xml_parser())
+
+
+def omit_shared_members(xml, interface, shared, shared_interface, keep):
+    """Omit identically declared members documented on the reference interface."""
+    reference = shared.find(f"./interface[@name='{shared_interface}']")
+    target = xml.find(f"./interface[@name='{interface}']")
+    common = {etree.tostring(member, with_tail=False) for member in reference}
+    for member in list(target):
+        if member.get('name') not in keep and etree.tostring(member, with_tail=False) in common:
+            target.remove(member)
+
+
 def subst_output(document, programlisting, stats, missing_version):
     executable = programlisting.get('executable', None)
     if executable is None:
@@ -219,16 +235,16 @@ def subst_output(document, programlisting, stats, missing_version):
     node = programlisting.get('node')
     interface = programlisting.get('interface')
 
-    argv = [f'{arguments.build_dir}/{executable}', f'--bus-introspect={interface}']
-    print(f'COMMAND: {shlex_join(argv)}')
-
     try:
-        out = subprocess.check_output(argv, universal_newlines=True)
+        xml = introspect(executable, interface)
+        shared_interface = programlisting.get('shared-with')
+        if shared_interface:
+            shared = introspect(executable, shared_interface)
+            keep = programlisting.get('keep', '').split()
+            omit_shared_members(xml, interface, shared, shared_interface, keep)
     except FileNotFoundError:
         print(f'{executable} not found, ignoring', file=sys.stderr)
         return
-
-    xml = etree.fromstring(out, parser=xml_parser())
 
     new_text, declarations, interfaces = xml_to_text(node, xml, only_interface=interface)
     programlisting.text = '\n' + new_text

@@ -72,6 +72,19 @@ mkosi in the systemd reposistory, so any local modifications to the mkosi
 configuration (e.g. in `mkosi/mkosi.local.conf`) are automatically picked up and used
 by the integration tests as well.
 
+## Testing sched_ext scheduler units
+
+`TEST-99-SCHED-EXT` runs the system manager in a disposable VM. Its failing-loader test runs on every
+kernel. The installed test provider probes the running kernel and exercises root-only or hierarchical
+attachments as supported. Build systemd with BPF and install the test binaries in the image for live checks.
+The hierarchy cases cover service admission, branch restart, manager reexecution and workload fallback
+when a loader exits. The boot cases reboot with a configured root scheduler and check both successful
+attachment and rejection of the first workload when the loader is missing.
+
+```sh
+meson test -C build --setup=integration -v TEST-99-SCHED-EXT TEST-99-SCHED-EXT-BOOT TEST-99-SCHED-EXT-BOOT-MISSING
+```
+
 ## Iterating on an integration test
 
 To iterate on an integration test, let's first get a shell in the integration test environment by running

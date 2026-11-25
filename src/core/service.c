@@ -52,6 +52,7 @@
 #include "random-util.h"
 #include "selinux-util.h"
 #include "serialize.h"
+#include "scheduler.h"
 #include "service.h"
 #include "signal-util.h"
 #include "socket.h"
@@ -2502,11 +2503,25 @@ static ServiceState service_determine_dead_state(Service *s) {
         return SERVICE_FD_STORE_POPULATED(s) && IN_SET(s->fd_store_preserve_mode, EXEC_PRESERVE_YES, EXEC_PRESERVE_ON_SUCCESS) ? SERVICE_DEAD_RESOURCES_PINNED : SERVICE_DEAD;
 }
 
+static Unit* service_get_pinned_scheduler(Unit *u) {
+        UnitDependencyInfo info;
+        Unit *other;
+
+        HASHMAP_FOREACH_KEY(info.data, other, unit_get_dependencies(u, UNIT_WANTS))
+                if (FLAGS_SET(info.origin_mask, UNIT_DEPENDENCY_SCHEDULER_RUNTIME))
+                        return other;
+
+        return NULL;
+}
+
 static void service_enter_dead(Service *s, ServiceResult f, bool allow_restart) {
         ServiceState end_state, restart_state;
         int r;
 
         assert(s);
+
+        if (service_get_pinned_scheduler(UNIT(s)))
+                unit_remove_dependencies(UNIT(s), UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
 
         /* If there's a stop job queued before we enter the DEAD state, we shouldn't act on Restart=, in order to not
          * undo what has already been enqueued. */
@@ -3634,6 +3649,13 @@ static int service_start(Unit *u) {
         if (r < 0)
                 return r;
 
+        Unit *scheduler = unit_get_start_scheduler(u);
+        if (scheduler) {
+                r = unit_add_dependency(u, UNIT_WANTS, scheduler, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
+                if (r < 0)
+                        return r;
+        }
+
         s->main_pid_known = false;
         s->main_pid_alien = false;
         s->forbid_restart = false;
@@ -3895,6 +3917,10 @@ static int service_serialize(Unit *u, FILE *f, FDSet *fds) {
         assert(f);
         assert(fds);
 
+        Unit *scheduler = service_get_pinned_scheduler(u);
+        if (scheduler)
+                (void) serialize_item(f, "admitted-scheduler", scheduler->id);
+
         (void) serialize_item(f, "state", service_state_to_string(s->state));
         (void) serialize_item(f, "result", service_result_to_string(s->result));
         (void) serialize_item(f, "reload-result", service_result_to_string(s->reload_result));
@@ -4152,6 +4178,9 @@ static int service_deserialize_item(Unit *u, const char *key, const char *value,
         assert(key);
         assert(value);
         assert(fds);
+
+        if (streq(key, "admitted-scheduler") && unit_name_to_type(value) == UNIT_SCHEDULER)
+                return unit_add_dependency_by_name(u, UNIT_WANTS, value, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
 
         if (streq(key, "state")) {
                 ServiceState state;

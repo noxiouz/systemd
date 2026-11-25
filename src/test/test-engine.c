@@ -1,12 +1,18 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 #include <stdio.h>
+#include <sys/wait.h>
 
 #include "sd-bus.h"
+#include "sd-event.h"
 
+#include "format-util.h"
 #include "manager.h"
 #include "manager-dump.h"
+#include "pidref.h"
+#include "process-util.h"
 #include "rm-rf.h"
+#include "scheduler.h"
 #include "service.h"
 #include "slice.h"
 #include "special.h"
@@ -288,6 +294,106 @@ TEST(engine) {
         ASSERT_NULL(unit_has_dependency(sauce, UNIT_ATOM_REFERENCED_BY, tomato));
         ASSERT_NULL(unit_has_dependency(fruit, UNIT_ATOM_REFERENCED_BY, tomato));
         ASSERT_NOT_NULL(unit_has_dependency(zupa, UNIT_ATOM_REFERENCED_BY, tomato));
+}
+
+TEST(scheduler_bindings) {
+        _cleanup_(rm_rf_physical_and_freep) char *runtime_dir = NULL;
+        _cleanup_free_ char *unit_dir = NULL;
+
+        ASSERT_OK(get_testdata_dir("test-scheduler", &unit_dir));
+        ASSERT_OK(setenv_unit_path(unit_dir));
+        ASSERT_NOT_NULL(runtime_dir = setup_fake_runtime_dir());
+
+        FOREACH_STRING(first, "lab-build-ci.slice", "batch@lab-build.scheduler", "lab.slice") {
+                _cleanup_(manager_freep) Manager *m = NULL;
+                Unit *root, *lab, *build, *sibling, *leaf, *escaped, *cleared, *unbound, *u;
+                int r;
+
+                r = manager_new(RUNTIME_SCOPE_USER, MANAGER_TEST_RUN_MINIMAL, &m);
+                if (manager_errno_skip_test(r))
+                        return (void) log_tests_skipped_errno(r, "manager_new");
+                ASSERT_OK(r);
+                ASSERT_OK(manager_startup(m, /* serialization= */ NULL, /* fds= */ NULL, /* named_listen_fds= */ NULL, /* root= */ NULL));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, first, /* path= */ NULL, LOG_ERR, &u));
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-build-ci.slice", /* path= */ NULL, LOG_ERR, &leaf));
+                root = ASSERT_PTR(manager_get_unit(m, "-.slice"));
+                lab = ASSERT_PTR(manager_get_unit(m, "lab.slice"));
+                build = ASSERT_PTR(manager_get_unit(m, "lab-build.slice"));
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "interactive.slice", /* path= */ NULL, LOG_ERR, &sibling));
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(sibling)))->id, "latency@interactive.scheduler");
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(root)))->id, "partition@-.scheduler");
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(lab)))->id, "partition@lab.scheduler");
+                u = ASSERT_PTR(slice_get_configured_scheduler(SLICE(leaf)));
+                ASSERT_STREQ(u->id, "batch@lab-build.scheduler");
+                ASSERT_PTR_EQ(UNIT_DEREF(SCHEDULER(u)->target_slice), build);
+                ASSERT_PTR_EQ(UNIT_DEREF(SLICE(build)->scheduler), u);
+                ASSERT_PTR_EQ(manager_get_unit(m, "batch@lab-build.scheduler"), u);
+                ASSERT_PTR_EQ(slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(build))), UNIT_DEREF(SLICE(lab)->scheduler));
+                ASSERT_NULL(UNIT_DEREF(SLICE(leaf)->scheduler));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-x\\x2dy.slice", /* path= */ NULL, LOG_ERR, &escaped));
+                ASSERT_STREQ(ASSERT_PTR(slice_get_configured_scheduler(SLICE(escaped)))->id, "batch@lab-x\\x2dy.scheduler");
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "lab-clear.slice", /* path= */ NULL, LOG_ERR, &cleared));
+                ASSERT_NULL(UNIT_DEREF(SLICE(cleared)->scheduler));
+                ASSERT_PTR_EQ(slice_get_configured_scheduler(SLICE(cleared)), UNIT_DEREF(SLICE(lab)->scheduler));
+
+                FOREACH_STRING(invalid, "wrong.slice", "missing.slice", "conflict.slice", "batch@lab.scheduler")
+                        ASSERT_FAIL(manager_load_startable_unit_or_warn(m, invalid, /* path= */ NULL, LOG_DEBUG, &u));
+
+                ASSERT_OK(manager_load_startable_unit_or_warn(m, "batch@unbound.scheduler", /* path= */ NULL, LOG_ERR, &unbound));
+                ASSERT_ERROR(unit_start(unbound, /* details= */ NULL), ENOLINK);
+        }
+}
+
+TEST(scheduler_detach_timeout) {
+        _cleanup_(rm_rf_physical_and_freep) char *runtime_dir = NULL;
+        _cleanup_(manager_freep) Manager *m = NULL;
+        _cleanup_(pidref_done_sigkill_wait) PidRef helper = PIDREF_NULL;
+        _cleanup_free_ char *unit_dir = NULL;
+        char pid[DECIMAL_STR_MAX(pid_t)];
+        siginfo_t si;
+        Unit *u;
+        int r;
+
+        ASSERT_OK(get_testdata_dir("test-scheduler", &unit_dir));
+        ASSERT_OK(setenv_unit_path(unit_dir));
+        ASSERT_NOT_NULL(runtime_dir = setup_fake_runtime_dir());
+        r = manager_new(RUNTIME_SCOPE_USER, MANAGER_TEST_RUN_BASIC | MANAGER_TEST_DONT_OPEN_EXECUTOR, &m);
+        if (manager_errno_skip_test(r))
+                return (void) log_tests_skipped_errno(r, "manager_new");
+        ASSERT_OK(r);
+        ASSERT_OK(manager_startup(m, /* serialization= */ NULL, /* fds= */ NULL, /* named_listen_fds= */ NULL, /* root= */ NULL));
+        ASSERT_OK(manager_load_startable_unit_or_warn(m, "batch@unbound.scheduler", /* path= */ NULL, LOG_ERR, &u));
+
+        r = ASSERT_OK(pidref_safe_fork("(test-detach)", FORK_DEATHSIG_SIGKILL, &helper));
+        if (r == 0) {
+                raise(SIGSTOP);
+                _exit(EXIT_SUCCESS);
+        }
+        ASSERT_OK_ZERO(waitid(P_PID, helper.pid, &si, WSTOPPED));
+
+        /* Model reexecution while a detach helper is still blocked and the loader has exited. */
+        xsprintf(pid, PID_FMT, helper.pid);
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "state", "detaching", NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "scx-detacher", pid, NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->deserialize_item(u, "scx-deadline", "1", NULL));
+        ASSERT_OK(UNIT_VTABLE(u)->coldplug(u));
+        ASSERT_OK(manager_add_job(m, JOB_STOP, u, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
+        usec_t until = usec_add(now(CLOCK_MONOTONIC), 5 * USEC_PER_SEC);
+        while (u->job) {
+                ASSERT_LT(now(CLOCK_MONOTONIC), until);
+                ASSERT_OK(sd_event_run(m->event, 100 * USEC_PER_MSEC));
+        }
+        ASSERT_EQ(SCHEDULER(u)->result, -ETIMEDOUT);
+        ASSERT_EQ(unit_active_state(u), UNIT_DEACTIVATING);
+        ASSERT_OK(pidref_kill(&helper, SIGCONT));
+        while (unit_active_state(u) == UNIT_DEACTIVATING) {
+                ASSERT_LT(now(CLOCK_MONOTONIC), until);
+                ASSERT_OK(sd_event_run(m->event, 100 * USEC_PER_MSEC));
+        }
+        ASSERT_EQ(unit_active_state(u), UNIT_FAILED);
+        ASSERT_NULL(SCHEDULER(u)->runtime);
 }
 
 static int intro(void) {
