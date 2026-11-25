@@ -72,27 +72,19 @@ mkosi in the systemd reposistory, so any local modifications to the mkosi
 configuration (e.g. in `mkosi/mkosi.local.conf`) are automatically picked up and used
 by the integration tests as well.
 
-## Testing sched_ext sub-schedulers
+## Testing sched_ext scheduler units
 
-`TEST-99-SCHED-EXT` runs in a VM with eight vCPUs. The guest needs Python,
-`bpftool` and a hierarchical `scx_qmap` on its PATH.
+`TEST-99-SCHED-EXT` runs the system manager in a disposable VM. It checks that a failing
+root scheduler prevents a real service from starting. To run the successful hierarchy case,
+install the [cooperative qmap test provider](../scx/README.md) at
+`/usr/local/libexec/scx-test-provider` in a guest with kernel subtree support. The test
+then starts a service on demand, checks the active root and child, verifies the effective
+scheduler against the kernel tree, and stops the branch. Without the provider it reports a skip
+after checking failure propagation.
 
 ```sh
 meson test -C build --setup=integration -v TEST-99-SCHED-EXT
 ```
-
-For a standalone reference run on an arm64 host with Lima, run
-`test/scx/run-reference.sh > sched-ext-report.json` from the repository root.
-It boots a fresh digest-pinned Debian cloud image with its distribution kernel,
-builds the upstream Linux v7.3 example loader using Clang 23, and deletes the guest
-after the run. The JSON records the image, kernel, BTF, loader, attachment tree,
-nearest attached ancestor of the unbound slice, and teardown. Package installation and the provider checkout
-need network access. The test uses root privileges inside the disposable guest.
-
-To inspect a running kernel before attaching a scheduler, run
-`python3 test/scx/baseline.py --probe`. A supported hierarchy returns 0,
-a successful probe with the kernel function absent returns 77, and an unavailable
-or unreadable probe returns 1.
 
 ## Iterating on an integration test
 
