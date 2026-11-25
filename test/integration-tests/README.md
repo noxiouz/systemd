@@ -74,13 +74,11 @@ by the integration tests as well.
 
 ## Testing sched_ext scheduler units
 
-`TEST-99-SCHED-EXT` runs the system manager in a disposable VM. It checks that a failing
-root scheduler prevents a real service from starting. To run the successful hierarchy case,
-install the [cooperative qmap test provider](../scx/README.md) at
-`/usr/local/libexec/scx-test-provider` in a guest with kernel subtree support. The test
-then starts a service on demand, checks the active root and child, verifies the effective
-scheduler against the kernel tree, and stops the branch. Without the provider it reports a skip
-after checking failure propagation.
+`TEST-99-SCHED-EXT` runs the system manager in a disposable VM. Its failing-loader test runs on every
+kernel. The installed test provider probes the running kernel and exercises root-only or hierarchical
+attachments as supported. Build systemd with BPF and install the test binaries in the image for live checks.
+The hierarchy test starts a service on demand, compares its effective scheduler with the kernel's tree,
+and stops the branch.
 
 ```sh
 meson test -C build --setup=integration -v TEST-99-SCHED-EXT

@@ -356,7 +356,6 @@ class Replay:
             )
 
         self.guest(positive, *root, 'bash', f'{TEST}/replay/deploy.sh', self.revision)
-        self.guest(positive, *root, 'install', '-Dm755', identity, '/usr/local/libexec/scx-test-provider')
         native = ['sh', '-ec', f'cd {BASE}/src/test/units; exec ./TEST-99-SCHED-EXT.sh']
         # Running each required subtest alone makes an unexpected skip fail the reference replay.
         for subtest in ('rejection', 'root', 'hierarchy'):
@@ -455,14 +454,6 @@ class Replay:
             f'mv /tmp/scx-package.tar {BASE}/package.tar',
         )
         self.guest(negative, *root, 'bash', f'{TEST}/replay/deploy.sh', self.revision)
-        self.guest(
-            negative,
-            *root,
-            'install',
-            '-Dm755',
-            f'/opt/scx-replay/{self.revision}/simple-provider',
-            '/usr/local/libexec/scx-test-provider',
-        )
         self.case(
             '04',
             'native-root-only',

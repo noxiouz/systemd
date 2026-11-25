@@ -29,16 +29,16 @@ meson setup mixed src/test/scx/identity -Dlinux-source="$PWD/linux" -Dqmap-build
 meson compile -C mixed
 if [[ "$2" != full ]]; then exit 0; fi
 
-"${apt[@]}" install -y --no-install-recommends g++ ninja-build gperf python3-jinja2 python3-pyelftools \
+"${apt[@]}" install -y --no-install-recommends g++ ninja-build gperf libbpf-dev clang python3-jinja2 python3-pyelftools \
     python3-packaging libmount-dev libblkid-dev libselinux-dev libseccomp-dev libacl1-dev libaudit-dev \
     libpam0g-dev liblz4-dev liblzma-dev libzstd-dev libkmod-dev libpcre2-dev libcryptsetup-dev
 meson setup build src --prefix=/usr --sysconfdir=/etc --libdir=lib/aarch64-linux-gnu
-meson compile -C build systemd:executable systemd-executor:executable systemd-analyze:executable systemctl:executable
+meson compile -C build systemd:executable systemd-executor:executable systemd-analyze:executable systemctl:executable test-sched-ext-provider
 
 # Preserve the in-tree RUNPATH layout used by this particular build on both guests.
 bundle=$PWD/package
 mkdir -p "$bundle"
-for exe in systemd systemd-executor systemd-analyze systemctl; do
+for exe in systemd systemd-executor systemd-analyze systemctl test-sched-ext-provider; do
     install -m755 "build/$exe" "$bundle/$exe"
 done
 for lib in build/src/{core/libsystemd-core,shared/libsystemd-shared}-*.so; do

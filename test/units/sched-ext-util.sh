@@ -8,29 +8,22 @@ units=/run/systemd/system
 root='scxtest@-.scheduler'
 child='scxtest@scxtest.scheduler'
 root_dropin="$units/-.slice.d/90-scxtest.conf"
-provider=/usr/local/libexec/scx-test-provider
+provider=/usr/lib/systemd/tests/unit-tests/manual/test-sched-ext-provider
 
 require_scx() {
-    if [[ ! -e /sys/kernel/sched_ext/state || ! -e "$provider" ]]; then
-        echo "Skipping live scheduler test, sched_ext or $provider is unavailable"
-        exit 77
-    fi
     test -x "$provider"
+    "$provider" --probe
 }
 
 require_scx_hierarchy() {
-    local expected=${1:?} supported
+    local expected=${1:?} rc=0
     require_scx
-    if [[ ! -r /sys/kernel/btf/vmlinux ]] || ! command -v bpftool >/dev/null; then
-        echo "Skipping hierarchy probe, kernel BTF or bpftool is unavailable"
-        exit 77
-    fi
-    supported=$(bpftool btf dump file /sys/kernel/btf/vmlinux format raw |
-                    awk -v marker=" FUNC 'scx_bpf_sub_dispatch' " 'index($0, marker) { found=1 } END { print found ? "yes" : "no" }')
-    if [[ "$supported" != "$expected" ]]; then
-        echo "Skipping, this test requires hierarchy support to be $expected"
-        exit 77
-    fi
+    "$provider" --probe-hierarchy || rc=$?
+    case "$expected:$rc" in
+        yes:0|no:77) ;;
+        yes:77|no:0) echo "Skipping, this test requires hierarchy support to be $expected"; exit 77 ;;
+        *) exit "$rc" ;;
+    esac
 }
 
 scx_cleanup() {

@@ -21,22 +21,15 @@ Each uses the same build recipe and writes its results in the output directory.
 
 The full replay creates an isolated Lima home, builds systemd and the three
 cooperative providers in the Debian guest, and installs the tested manager and
-executor as guest PID 1. It installs the cooperative provider and runs TEST-99, including successful root and child attachments.
+executor as guest PID 1. It runs TEST-99 with the native test provider, including successful root and child attachments.
 It also runs the userspace tests, boots four two-vCPU QEMU disk overlays
 and installs the same userspace build in the Fedora control guest. Each guest
 uses its own distribution kernel and configuration. The recovery case adds its
 distribution shell to the userspace initrd. The run removes its VMs and retains
 the evidence directory.
 
-To run TEST-99 separately, build the cooperative qmap fixture from this checkout and an upstream qmap build.
-On the reference guest, the following commands require Linux v7.3 sources at `$linux`:
-
-```sh
-make -C "$linux/tools/sched_ext" CLANG=clang-23 scx_qmap
-meson setup /tmp/scx-provider test/scx/identity -Dlinux-source="$linux" -Dqmap-build="$linux/tools/sched_ext/build"
-meson compile -C /tmp/scx-provider identity-provider
-sudo install -D /tmp/scx-provider/identity-provider /usr/local/libexec/scx-test-provider
-```
+To run TEST-99 separately, follow the [systemd integration-test instructions](../integration-tests/README.md).
+Its test provider is part of the normal Meson test build.
 
 | Input | Reference |
 | --- | --- |

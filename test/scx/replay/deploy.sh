@@ -19,6 +19,9 @@ done
 for name in systemctl systemd-analyze bpftool; do
     ln -sfn "$dst/$name" "/usr/local/bin/$name"
 done
+provider=/usr/lib/systemd/tests/unit-tests/manual/test-sched-ext-provider
+mkdir -p "${provider%/*}"
+ln -sfn "$dst/test-sched-ext-provider" "$provider"
 /usr/bin/systemctl daemon-reexec
 [[ $(readlink /proc/1/exe) == "$dst/systemd" ]]
 systemd-run --unit=scx-replay-smoke --collect --wait /usr/bin/true

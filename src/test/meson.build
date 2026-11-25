@@ -623,6 +623,13 @@ executables += [
                 'suite' : 'libudev',
         },
 
+        test_template + {
+                'sources' : files('test-sched-ext-provider.c'),
+                'dependencies' : have_test_scx ? [libbpf] : [],
+                'bpf_programs' : ['sched-ext-root', 'sched-ext-child', 'sched-ext-cid'],
+                'type' : 'manual',
+        },
+
         # Tests that link to libcore, i.e. tests for pid1 code.
         core_test_template + {
                 'sources' : files('test-bpf-devices.c'),
