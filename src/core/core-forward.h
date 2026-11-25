@@ -45,6 +45,7 @@ typedef struct MountImage MountImage;
 typedef struct PathSpec PathSpec;
 typedef struct Scope Scope;
 typedef struct Service Service;
+typedef struct Slice Slice;
 typedef struct Socket Socket;
 typedef struct SocketPeer SocketPeer;
 typedef struct TemporaryFileSystem TemporaryFileSystem;

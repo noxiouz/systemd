@@ -2028,14 +2028,9 @@ int unit_start(Unit *u, ActivationDetails *details) {
         if (!unit_verify_deps(u))
                 return -ENOLINK;
 
-        /* A condition-skipped or lost scheduler may have completed its job successfully. Check
-         * the complete configured chain immediately before handing admission to the unit type. */
-        for (Unit *scheduler = unit_get_start_scheduler(u), *parent; scheduler; scheduler = parent) {
-                parent = unit_get_start_scheduler(scheduler);
-                if (!scheduler_is_attached(SCHEDULER(scheduler)) || UNIT_DEREF(SCHEDULER(scheduler)->runtime_parent) != parent)
-                        return log_unit_notice_errno(u, SYNTHETIC_ERRNO(ENOLINK),
-                                                     "Required scheduler %s is not attached under its configured parent.", scheduler->id);
-        }
+        r = unit_verify_start_scheduler(u);
+        if (r < 0)
+                return r;
 
         /* Forward to the main object, if we aren't it. */
         following = unit_following(u);

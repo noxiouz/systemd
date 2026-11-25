@@ -43,6 +43,33 @@ Unit* unit_get_start_scheduler(Unit *u) {
         return NULL;
 }
 
+int unit_verify_start_scheduler(Unit *u) {
+        Unit *required = unit_get_start_scheduler(u);
+        int r;
+
+        if (!required)
+                return 0;
+
+        /* A condition-skipped or lost scheduler may have completed its job successfully. Check
+         * the complete configured chain immediately before handing admission to the unit type. */
+        for (Unit *scheduler = required, *parent; scheduler; scheduler = parent) {
+                parent = unit_get_start_scheduler(scheduler);
+                if (!scheduler_is_attached(SCHEDULER(scheduler)) || UNIT_DEREF(SCHEDULER(scheduler)->runtime_parent) != parent)
+                        return log_unit_notice_errno(u, SYNTHETIC_ERRNO(ENOLINK),
+                                                     "Required scheduler %s is not attached under its configured parent.", scheduler->id);
+        }
+
+        if (u->type == UNIT_SERVICE) {
+                Unit *effective;
+                r = scheduler_backend.get_effective(SLICE(UNIT_GET_SLICE(u)), &effective);
+                if (r < 0 || effective != required)
+                        return log_unit_notice_errno(u, r < 0 && r != -EAGAIN ? r : SYNTHETIC_ERRNO(ENOLINK),
+                                                     "Cannot confirm effective scheduler %s for workload.", required->id);
+        }
+
+        return 0;
+}
+
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent) {
         assert(parent);
 
@@ -92,7 +119,7 @@ void scheduler_set_state(Scheduler *s, SchedulerState state) {
 }
 
 bool scheduler_is_attached(Scheduler *s) {
-        return s->state == SCHEDULER_ATTACHED && (!scheduler_backend.is_live || scheduler_backend.is_live(s));
+        return s->state == SCHEDULER_ATTACHED && scheduler_backend.is_live(s);
 }
 
 static void scheduler_init(Unit *u) {

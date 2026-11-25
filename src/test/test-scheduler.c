@@ -21,6 +21,7 @@
 #include "tests.h"
 
 static char **attempts = NULL;
+static Slice *foreign = NULL;
 
 static int test_attach(Scheduler *s, int target_fd) {
         Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
@@ -47,9 +48,20 @@ static void test_stop(Scheduler *s, bool initiate) {
         scheduler_set_state(s, SCHEDULER_DEAD);
 }
 
+static bool test_is_live(Scheduler *s) {
+        return unit_active_state(UNIT_DEREF(s->target_slice)) == UNIT_ACTIVE;
+}
+
+static int test_get_effective(Slice *slice, Unit **ret) {
+        *ret = slice == foreign ? NULL : slice_get_configured_scheduler(slice);
+        return 0;
+}
+
 const SchedulerBackend scheduler_backend = {
         .attach = test_attach,
         .stop = test_stop,
+        .is_live = test_is_live,
+        .get_effective = test_get_effective,
 };
 
 static void wait_for_unit(Unit *u, UnitActiveState state) {
@@ -132,6 +144,11 @@ TEST(scheduler_transactions) {
         check_markers(runtime, "b", true);
         ASSERT_FALSE(unit_is_unneeded(leaf));
         ASSERT_STRV_EQ(attempts, STRV_MAKE("partition@-.scheduler", "partition@lab.scheduler", "batch@lab-build.scheduler"));
+
+        foreign = SLICE(UNIT_GET_SLICE(a));
+        ASSERT_ERROR(unit_start(a, /* details= */ NULL), ENOLINK);
+        check_markers(runtime, "a", false);
+        foreign = NULL;
 
         /* Clearing a middle declaration changes the next start. The still-live leaf belongs to the old parent. */
         Unit *mid_slice = UNIT_DEREF(SCHEDULER(middle)->target_slice);

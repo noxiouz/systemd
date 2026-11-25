@@ -7,13 +7,13 @@ import ctypes
 import json
 import os
 import signal
-import socket
 import subprocess
 import sys
+import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 
-from lifecycle import CG, SCX, UNITS, ctl, link_id, packet, state, wait_for
+from lifecycle import CG, SCX, UNITS, ctl, foreign, link_id, state, wait_for
 
 SCHEDULER = 'org.freedesktop.systemd1.Scheduler'
 SLICE = 'org.freedesktop.systemd1.Slice'
@@ -55,6 +55,9 @@ def run(binary, rows):
                 out.write(body)
             files.callback(file.unlink)
 
+        workload = 'scx-observe-foreign.service'
+        marker = Path(files.enter_context(tempfile.TemporaryDirectory(dir='/run'))) / 'ran'
+        config(UNITS / workload, f'[Service]\nSlice={units[-1]}\nType=oneshot\nExecStart=/usr/bin/touch {marker}\n')
         root = UNITS / '-.slice.d'
         if not root.exists():
             root.mkdir()
@@ -91,6 +94,14 @@ def run(binary, rows):
                              configured=LEAF, effective=LEAF, inherited=units[2], comparisons=observations,
                              listed=listing.splitlines(), status=status.splitlines()))
 
+            with foreign(script, target / units[-1]) as foreign_link:
+                compare(units[-1], SLICE, 'EffectiveScheduler', 'foreign')
+                assert ctl('start', workload, check=False).returncode != 0 and not marker.exists()
+                foreign_id = link_id(foreign_link)
+            ctl('start', workload)
+            assert marker.exists()
+            rows.append(dict(case='foreign-inherited-admission', foreign_link=foreign_id, recovered=LEAF))
+
             libbpf = ctypes.CDLL('libbpf.so.1', use_errno=True)
             link = libbpf.bpf_link_get_fd_by_id(owned)
             assert link >= 0
@@ -122,29 +133,14 @@ def run(binary, rows):
             finally:
                 os.close(link)
 
-            with ExitStack() as other:
-                sock, peer = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-                other.enter_context(sock)
-                other.enter_context(peer)
-                cgfd = os.open(target, os.O_PATH | os.O_DIRECTORY)
-                other.callback(os.close, cgfd)
-                proc = subprocess.Popen([script, 'a' * 32, str(cgfd), 'child'], stdin=peer, pass_fds=(cgfd,))
-                peer.close()
-                try:
-                    data, descriptors = packet(sock)
-                    for fd in descriptors:
-                        other.callback(os.close, fd)
-                    assert len(descriptors) == 1 and data.startswith(b'attach ')
-                    assert (leaf / 'ops').read_text().strip() == algorithm
-                    assert origin != leaf.stat().st_ino and owned != link_id(descriptors[0])
-                    observations = [compare(units[2], SLICE, 'ConfiguredScheduler', LEAF)]
-                    observations.append(compare(units[2], SLICE, 'EffectiveScheduler', 'foreign'))
-                    rows.append(dict(case='foreign-replacement', node=leaf.stat().st_ino,
-                                     link=link_id(descriptors[0]), algorithm=algorithm, effective='foreign',
-                                     comparisons=observations))
-                finally:
-                    sock.send(b'Q')
-                    proc.wait(timeout=10)
+            with foreign(script, target) as foreign_link:
+                assert (leaf / 'ops').read_text().strip() == algorithm
+                assert origin != leaf.stat().st_ino and owned != link_id(foreign_link)
+                observations = [compare(units[2], SLICE, 'ConfiguredScheduler', LEAF),
+                                compare(units[2], SLICE, 'EffectiveScheduler', 'foreign')]
+                rows.append(dict(case='foreign-replacement', node=leaf.stat().st_ino,
+                                 link=link_id(foreign_link), algorithm=algorithm, effective='foreign',
+                                 comparisons=observations))
         finally:
             for unit in (LEAF, MIDDLE, ROOT, *reversed(units)):
                 ctl('stop', unit, check=False)

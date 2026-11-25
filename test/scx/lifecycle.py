@@ -122,10 +122,10 @@ def proxy(binary, directory, generation, fd, role):
 
 
 @contextmanager
-def foreign(binary):
+def foreign(binary, target=TARGET):
     channel, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     with channel, child, ExitStack() as cleanup:
-        fd = os.open(TARGET, os.O_PATH | os.O_DIRECTORY)
+        fd = os.open(target, os.O_PATH | os.O_DIRECTORY)
         cleanup.callback(os.close, fd)
         proc = subprocess.Popen([binary, '0' * 32, str(fd), 'child'], stdin=child, pass_fds=(fd,))
         child.close()

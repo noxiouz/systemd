@@ -41,6 +41,7 @@ extern const UnitVTable scheduler_vtable;
 DEFINE_CAST(SCHEDULER, Scheduler);
 
 Unit* unit_get_start_scheduler(Unit *u);
+int unit_verify_start_scheduler(Unit *u);
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent);
 int scheduler_bind_parent(Scheduler *s, Unit *parent);
 void scheduler_set_state(Scheduler *s, SchedulerState state);
@@ -52,7 +53,7 @@ typedef struct SchedulerBackend {
         int (*deserialize)(Scheduler *s, const char *key, const char *value, FDSet *fds);
         int (*coldplug)(Scheduler *s);
         bool (*is_live)(Scheduler *s);
-        bool (*owns_node)(Scheduler *s, const char *path);
+        int (*get_effective)(Slice *slice, Unit **ret);
         void (*sigchld)(Scheduler *s, pid_t pid, int code, int status);
 } SchedulerBackend;
 

@@ -22,6 +22,7 @@
 #include "pidref.h"
 #include "scheduler.h"
 #include "serialize.h"
+#include "slice.h"
 #include "socket-util.h"
 #include "special.h"
 #include "stat-util.h"
@@ -59,6 +60,75 @@ static bool backend_live(Scheduler *s) {
                 inode_same_at(rt->target, NULL, AT_FDCWD, rt->target_path, AT_EMPTY_PATH) > 0 &&
                 backend_owns_node(s, rt->node_path) &&
                 faccessat(rt->node, "ops", F_OK, 0) >= 0;
+}
+
+/* Follow actual target IDs from root to leaf. A foreign attachment can exist on a slice with no
+ * declaration, and another instance with the same algorithm name can replace a managed one. */
+static int find_scheduler_node(Slice *s, char **node, Slice **owner) {
+        Unit *u = UNIT(s), *parent = UNIT_GET_SLICE(u);
+        int r;
+
+        if (parent) {
+                r = find_scheduler_node(SLICE(parent), node, owner);
+                if (r < 0)
+                        return r;
+
+                CGroupRuntime *crt = unit_get_cgroup_runtime(u);
+                if (!crt || !crt->cgroup_path)
+                        return -ENXIO;
+
+                _cleanup_free_ char *cg = NULL, *child = NULL;
+                r = cg_get_path(crt->cgroup_path, /* suffix= */ NULL, &cg);
+                if (r < 0)
+                        return r;
+
+                struct stat st;
+                if (stat(cg, &st) < 0)
+                        return -errno;
+                if (asprintf(&child, "%s/sub/sub-%" PRIu64, *node, (uint64_t) st.st_ino) < 0)
+                        return -ENOMEM;
+                if (access(child, F_OK) < 0)
+                        return errno == ENOENT ? 0 : -errno; /* Inherits the actual parent. */
+
+                free_and_replace(*node, child);
+        } else {
+                if (!unit_has_name(u, SPECIAL_ROOT_SLICE))
+                        return -ENXIO;
+                *node = strdup(SCX_ROOT);
+                if (!*node)
+                        return -ENOMEM;
+                if (access(*node, F_OK) < 0)
+                        return -errno;
+        }
+
+        *owner = s;
+        return 0;
+}
+
+static int backend_get_effective(Slice *slice, Unit **ret) {
+        _cleanup_free_ char *node = NULL;
+        Slice *owner;
+        int r;
+
+        r = find_scheduler_node(slice, &node, &owner);
+        if (r < 0)
+                return r;
+
+        LIST_FOREACH(units_by_type, u, UNIT(slice)->manager->units_by_type[UNIT_SCHEDULER])
+                if (backend_owns_node(SCHEDULER(u), node)) {
+                        if (!scheduler_is_attached(SCHEDULER(u)))
+                                return -EAGAIN;
+
+                        *ret = u;
+                        return 0;
+                }
+
+        Scheduler *candidate = SCHEDULER(UNIT_DEREF(owner->scheduler));
+        if (candidate && candidate->state == SCHEDULER_ATTACHING)
+                return -EAGAIN;
+
+        *ret = NULL;
+        return 0;
 }
 
 static void backend_done(Scheduler *s) {
@@ -651,7 +721,7 @@ const SchedulerBackend scheduler_backend = {
         .attach = backend_attach,
         .stop = backend_stop,
         .is_live = backend_live,
-        .owns_node = backend_owns_node,
+        .get_effective = backend_get_effective,
         .done = backend_done,
         .sigchld = backend_sigchld,
 };
