@@ -30,8 +30,8 @@ scx_cleanup() {
     # Remove the root declaration first so subsequent test and shutdown jobs can run.
     rm -f "$root_dropin"
     systemctl daemon-reload
-    systemctl stop "$child" "$root" scxtest.slice
-    rm -f "$units"/{scxtest@.scheduler,scxtest.slice,scxtest-work.service}
+    systemctl stop 'scxtest*.socket' 'scxtest*.service' 'scxtest*.scheduler' 'scxtest*.slice'
+    rm -f "$units"/scxtest*.{socket,service,scheduler,slice}
     rm -rf "$work"
     systemctl daemon-reload
 }
@@ -68,4 +68,47 @@ scx_set_loader() {
 ExecStart=${1:?}
 UNIT
     systemctl daemon-reload
+}
+
+scx_wait_for() {
+    local deadline=$((SECONDS + 30))
+    until "$@"; do
+        if ((SECONDS >= deadline)); then
+            echo "Timed out waiting for $*" >&2
+            return 1
+        fi
+        sleep .1
+    done
+}
+
+scx_property_is() {
+    [[ "$(systemctl show -P "$2" -- "$1")" == "$3" ]]
+}
+
+scx_job() {
+    systemctl list-jobs --no-legend --plain "$1" | awk -v unit="$1" '$2 == unit { print $1 }'
+}
+
+scx_has_job() {
+    [[ -n "$(scx_job "$1")" ]]
+}
+
+scx_controlled_loader() {
+    scx_set_loader "$(realpath "$(dirname "$0")"/sched-ext-loader.sh) $work $provider %n"
+}
+
+scx_tree() {
+    scx_setup "$child"
+    leaf=scxtest@scxtest-build.scheduler
+    sibling=scxtest@scxtestsibling.scheduler
+    for slice in scxtest scxtest-build scxtestsibling; do
+        cp "$root_dropin" "$units/$slice.slice"
+    done
+    # Give the intermediate qmap instance enough CPU for its child.
+    echo CPUWeight=300 >>"$units/scxtest.slice"
+    scx_controlled_loader
+    systemd-run --unit=scxtest-main --slice=scxtest-build.slice -p Type=exec -p StandardOutput=null yes
+    systemd-run --unit=scxtest-side --slice=scxtestsibling.slice -p Type=exec -p StandardOutput=null yes
+    assert_eq "$(systemctl show -P EffectiveScheduler scxtest-build.slice)" "$leaf"
+    assert_eq "$(systemctl show -P EffectiveScheduler scxtestsibling.slice)" "$sibling"
 }
