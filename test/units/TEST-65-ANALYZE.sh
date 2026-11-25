@@ -484,6 +484,17 @@ systemd-analyze verify /tmp/hoge@test.service
 (! systemd-analyze verify /tmp/hoge@nonexist.service)
 (! systemd-analyze verify /tmp/hoge@.service)
 
+# Verify a native scheduler declaration, including the concrete unit named in each diagnostic.
+(
+    fixtures=/usr/lib/systemd/tests/testdata/test-scheduler
+    export SYSTEMD_UNIT_PATH="$fixtures:"
+    systemd-analyze verify "$fixtures"/{lab,lab-build,interactive}.slice
+    for pair in wrong:batch@wrong.service missing:absent@missing.scheduler conflict:batch@lab.scheduler; do
+        output=$(assert_rc 1 systemd-analyze verify "$fixtures/${pair%%:*}.slice" 2>&1)
+        grep -F "Scheduler=${pair#*:}" <<<"$output" >/dev/null
+    done
+)
+
 # test that all commands are verified.
 cat <<EOF >/tmp/multi-exec-start.service
 [Service]
