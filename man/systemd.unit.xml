@@ -36,6 +36,7 @@
       <member><filename><replaceable>path</replaceable>.path</filename></member>
       <member><filename><replaceable>timer</replaceable>.timer</filename></member>
       <member><filename><replaceable>slice</replaceable>.slice</filename></member>
+      <member><filename><replaceable>scheduler</replaceable>@<replaceable>slice</replaceable>.scheduler</filename></member>
       <member><filename><replaceable>scope</replaceable>.scope</filename></member>
     </simplelist></para>
 
@@ -90,7 +91,7 @@
     socket, a device, a mount point, an automount point, a swap file or partition, a start-up
     target, a watched file system path, a timer controlled and supervised by
     <citerefentry><refentrytitle>systemd</refentrytitle><manvolnum>1</manvolnum></citerefentry>, a
-    resource management slice or a group of externally created processes. See
+    resource management slice, a BPF CPU scheduler or a group of externally created processes. See
     <citerefentry><refentrytitle>systemd.syntax</refentrytitle><manvolnum>7</manvolnum></citerefentry>
     for a general description of the syntax.</para>
 
@@ -112,6 +113,7 @@
     <citerefentry><refentrytitle>systemd.path</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
     <citerefentry><refentrytitle>systemd.timer</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
     <citerefentry><refentrytitle>systemd.slice</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
+    <citerefentry><refentrytitle>systemd.scheduler</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
     <citerefentry><refentrytitle>systemd.scope</refentrytitle><manvolnum>5</manvolnum></citerefentry>.
     </para>
 
@@ -125,7 +127,7 @@
     characters. The unit type suffix must be one of <literal>.service</literal>, <literal>.socket</literal>,
     <literal>.device</literal>, <literal>.mount</literal>, <literal>.automount</literal>,
     <literal>.swap</literal>, <literal>.target</literal>, <literal>.path</literal>,
-    <literal>.timer</literal>, <literal>.slice</literal>, or <literal>.scope</literal>.</para>
+    <literal>.timer</literal>, <literal>.slice</literal>, <literal>.scheduler</literal>, or <literal>.scope</literal>.</para>
 
     <para>Unit names can be parameterized by a single argument called the "instance name". The unit is then
     constructed based on a "template file" which serves as the definition of multiple services or other
@@ -2885,6 +2887,7 @@ OnFailure=failure-handler@%N.service
       <member><citerefentry><refentrytitle>systemd.target</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
       <member><citerefentry><refentrytitle>systemd.path</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
       <member><citerefentry><refentrytitle>systemd.timer</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
+      <member><citerefentry><refentrytitle>systemd.scheduler</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
       <member><citerefentry><refentrytitle>systemd.scope</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
       <member><citerefentry><refentrytitle>systemd.slice</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
       <member><citerefentry><refentrytitle>systemd.time</refentrytitle><manvolnum>7</manvolnum></citerefentry></member>

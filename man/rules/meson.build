@@ -1506,6 +1506,7 @@ manpages = [
  ['systemd.preset', '5', [], ''],
  ['systemd.resource-control', '5', [], ''],
  ['systemd.rr', '5', [], 'ENABLE_RESOLVE'],
+ ['systemd.scheduler', '5', [], ''],
  ['systemd.scope', '5', [], ''],
  ['systemd.service', '5', [], ''],
  ['systemd.slice', '5', [], ''],

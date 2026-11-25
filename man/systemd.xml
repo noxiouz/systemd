@@ -81,8 +81,8 @@
   <refsect1>
     <title>Units</title>
 
-    <para>systemd provides a dependency system between various entities called "units" of 11 different
-    types. Units encapsulate various objects that are relevant for system boot-up and maintenance. The
+    <para>systemd provides a dependency system between various entities called "units". Units encapsulate various
+    objects that are relevant for system boot-up and maintenance. The
     majority of units are configured in unit configuration files, whose syntax and basic set of options is
     described in
     <citerefentry><refentrytitle>systemd.unit</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
@@ -143,6 +143,9 @@
       manage system processes (such as service and scope units) in a
       hierarchical tree for resource management purposes. See
       <citerefentry><refentrytitle>systemd.slice</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para></listitem>
+
+      <listitem><para>Scheduler units supervise sched_ext CPU schedulers for slices. See
+      <citerefentry><refentrytitle>systemd.scheduler</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para></listitem>
 
       <listitem><para>Scope units are similar to service units, but
       manage foreign processes instead of starting them as well. See
