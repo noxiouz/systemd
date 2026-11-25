@@ -155,6 +155,24 @@ static int scheduler_load(Unit *u) {
         return 0;
 }
 
+static int scheduler_test_startable(Unit *u) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(u));
+        int r;
+
+        if (s->state == SCHEDULER_ATTACHING)
+                return false;
+
+        r = unit_test_start_limit(u);
+        if (r < 0) {
+                s->result = r;
+                s->failure_reason = mfree(s->failure_reason);
+                scheduler_set_state(s, SCHEDULER_FAILED);
+                return r;
+        }
+
+        return true;
+}
+
 static int scheduler_start(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
         Unit *target = UNIT_DEREF(s->target_slice);
@@ -169,9 +187,6 @@ static int scheduler_start(Unit *u) {
         if (!unit_has_name(target, SPECIAL_ROOT_SLICE) && !unit_get_start_scheduler(u))
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOLINK),
                                             "Target slice %s has no configured parent scheduler.", target->id);
-
-        if (s->state == SCHEDULER_ATTACHING)
-                return 0;
 
         int r = unit_realize_cgroup(target);
         if (r < 0)
@@ -248,6 +263,8 @@ static int scheduler_serialize(Unit *u, FILE *f, FDSet *fds) {
 
         (void) serialize_item(f, "state", scheduler_state_to_string(s->state));
         (void) serialize_item_format(f, "scheduler-result", "%d", s->result);
+        if (u->start_limit_hit)
+                (void) serialize_bool(f, "scheduler-start-limit-hit", true);
         (void) serialize_item_escaped(f, "scheduler-failure", s->failure_reason);
         return scheduler_backend.serialize ? scheduler_backend.serialize(s, f, fds) : 0;
 }
@@ -260,6 +277,12 @@ static int scheduler_deserialize_item(Unit *u, const char *key, const char *valu
                 if (state >= 0)
                         s->deserialized_state = state;
                 return 0;
+        }
+        if (streq(key, "scheduler-start-limit-hit")) {
+                int r = parse_boolean(value);
+                if (r >= 0)
+                        u->start_limit_hit = r;
+                return r;
         }
         if (streq(key, "scheduler-result"))
                 return safe_atoi(value, &s->result);
@@ -296,6 +319,7 @@ const UnitVTable scheduler_vtable = {
         .serialize = scheduler_serialize,
         .deserialize_item = scheduler_deserialize_item,
         .coldplug = scheduler_coldplug,
+        .test_startable = scheduler_test_startable,
         .start = scheduler_start,
         .stop = scheduler_stop,
         .can_fail = true,

@@ -25,7 +25,8 @@ static int property_get_scheduler(
                 Unit *parent = unit_get_start_scheduler(UNIT(s));
                 value = parent ? parent->id : NULL;
         } else if (streq(property, "FailureReason"))
-                value = s->failure_reason ?: (s->result < 0 ? STRERROR(s->result) : NULL);
+                value = UNIT(s)->start_limit_hit ? "Start request repeated too quickly." :
+                        s->failure_reason ?: (s->result < 0 ? STRERROR(s->result) : NULL);
         else {
                 assert(streq(property, "Result"));
                 switch (-s->result) {
@@ -34,7 +35,7 @@ static int property_get_scheduler(
                 case EBUSY:      value = "target-busy";   break;
                 case EOPNOTSUPP: value = "unsupported";   break;
                 case ECHILD:     value = "exit-code";     break;
-                case ECANCELED:  value = "kernel-exit";   break;
+                case ECANCELED:  value = UNIT(s)->start_limit_hit ? "start-limit-hit" : "kernel-exit"; break;
                 case ENOLINK:    value = "dependency";    break;
                 case ESTALE:     value = "stale";         break;
                 case EBADMSG:

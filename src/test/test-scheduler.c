@@ -158,6 +158,12 @@ TEST(scheduler_transactions) {
                 check_markers(runtime, instance, false);
         }
 
+        Unit *failed = load(m, "batch@fail.scheduler");
+        size_t n_attempts = strv_length(attempts);
+        ASSERT_ERROR(unit_start(failed, /* details= */ NULL), ECANCELED);
+        ASSERT_TRUE(failed->start_limit_hit);
+        ASSERT_EQ(strv_length(attempts), n_attempts);
+
         /* Even a broken slice scheduler must allow an action-only service to complete its transition. */
         Unit *action = load(m, "action-only.service");
         ASSERT_OK(manager_add_job(m, JOB_START, action, JOB_REPLACE, /* error= */ NULL, /* ret= */ NULL));
