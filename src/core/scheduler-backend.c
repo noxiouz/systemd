@@ -81,16 +81,6 @@ static void backend_done(Scheduler *s) {
         s->link_id = 0;
 }
 
-static void finish_stop(Scheduler *s) {
-        SchedulerRuntime *rt = s->runtime;
-
-        if (rt && (pidref_is_set(&rt->loader) || pidref_is_set(&rt->detacher)))
-                return;
-
-        backend_done(s);
-        scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
-}
-
 static int detach_link(Scheduler *s) {
         /* struct_ops unregistration can wait for the kernel. Detach only the link returned by this
          * invocation. BPF_LINK_DETACH also unregisters it when other processes retain duplicate FDs. */
@@ -120,6 +110,34 @@ static int detach_link(Scheduler *s) {
         return 0;
 }
 
+static int receive_packet(Scheduler *s, int fd);
+
+static void finish_stop(Scheduler *s) {
+        SchedulerRuntime *rt = s->runtime;
+
+        if (rt) {
+                if (pidref_is_set(&rt->loader) || pidref_is_set(&rt->detacher))
+                        return;
+
+                if (rt->channel >= 0) {
+                        /* The provider has exited. Its first packet may still carry our link, even
+                         * when stop or SIGCHLD was dispatched before the attach notification. */
+                        if (rt->link < 0)
+                                (void) receive_packet(s, rt->channel);
+                        rt->channel = safe_close(rt->channel);
+                        if (rt->link >= 0) {
+                                int r = detach_link(s);
+                                if (r >= 0)
+                                        return;
+                                s->result = log_unit_error_errno(UNIT(s), r, "Cannot start scheduler detach: %m");
+                        }
+                }
+        }
+
+        backend_done(s);
+        scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
+}
+
 static void backend_stop(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
         int r;
@@ -128,15 +146,9 @@ static void backend_stop(Scheduler *s) {
                 return finish_stop(s);
 
         rt->io = sd_event_source_disable_unref(rt->io);
-        if (rt->link >= 0 && !pidref_is_set(&rt->detacher)) {
-                r = detach_link(s);
-                if (r < 0)
-                        s->result = log_unit_error_errno(UNIT(s), r, "Cannot start scheduler detach: %m");
-        }
-
         if (rt->channel >= 0) {
                 (void) send(rt->channel, "Q", 1, MSG_DONTWAIT|MSG_NOSIGNAL);
-                rt->channel = safe_close(rt->channel);
+                (void) shutdown(rt->channel, SHUT_WR);
         }
 
         /* The provider normally exits on Q or EOF. Kill it if it is still loading or hung. */
@@ -262,6 +274,8 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
                 if (r < 0)
                         return r;
                 rt->link = TAKE_FD(*link);
+                if (s->state == SCHEDULER_DETACHING)
+                        return 0;
         } else if (*link >= 0 || rt->link < 0 || !STR_IN_SET(event, "status", "exit"))
                 return -EBADMSG;
 
@@ -310,26 +324,27 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
         return 0;
 }
 
-static int dispatch_io(sd_event_source *source, int fd, uint32_t revents, void *userdata) {
-        Scheduler *s = ASSERT_PTR(SCHEDULER(userdata));
+static int receive_packet(Scheduler *s, int fd) {
         _cleanup_close_ int link = -EBADF;
         char buf[1537];
         struct iovec iov = IOVEC_MAKE(buf, sizeof(buf) - 1);
         ssize_t n;
-        int r;
 
         n = receive_one_fd_iov(fd, &iov, 1, MSG_DONTWAIT, &link);
-        if (n == -EAGAIN)
-                return 0;
         if (n < 0)
-                r = (int) n;
-        else if (n == 0 || memchr(buf, 0, n))
-                r = -EBADMSG;
-        else {
-                buf[n] = 0;
-                r = process_packet(s, buf, &link);
-        }
-        if (r < 0) {
+                return (int) n;
+        if (n == 0 || memchr(buf, 0, n))
+                return -EBADMSG;
+
+        buf[n] = 0;
+        return process_packet(s, buf, &link);
+}
+
+static int dispatch_io(sd_event_source *source, int fd, uint32_t revents, void *userdata) {
+        Scheduler *s = ASSERT_PTR(SCHEDULER(userdata));
+
+        int r = receive_packet(s, fd);
+        if (r < 0 && r != -EAGAIN) {
                 /* Preserve provider terminal diagnostics across GC of the invocation runtime. */
                 _cleanup_free_ char *reason = TAKE_PTR(s->failure_reason);
                 backend_fail(s, r, reason ?: "Invalid or failed scheduler confirmation");
@@ -577,6 +592,14 @@ static int backend_coldplug(Scheduler *s) {
                         goto fail;
         }
 
+        if (rt->target >= 0) {
+                if (fstat(rt->target, &st) < 0) {
+                        r = -errno;
+                        goto fail;
+                }
+                rt->target_id = st.st_ino;
+        }
+
         if (s->deserialized_state == SCHEDULER_DETACHING) {
                 scheduler_set_state(s, SCHEDULER_DETACHING);
                 if (!pidref_is_set(&rt->loader) && !pidref_is_set(&rt->detacher))
@@ -590,11 +613,6 @@ static int backend_coldplug(Scheduler *s) {
                 r = -ENODATA;
                 goto fail;
         }
-        if (fstat(rt->target, &st) < 0) {
-                r = -errno;
-                goto fail;
-        }
-        rt->target_id = st.st_ino;
         rt->reconciling = true;
         if (s->deserialized_state == SCHEDULER_ATTACHED)
                 rt->deadline = MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), SCX_STATUS_TIMEOUT));

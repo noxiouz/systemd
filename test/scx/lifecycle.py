@@ -103,10 +103,14 @@ def proxy(binary, directory, generation, fd, role):
                             wait_for(lambda: (directory / 'release').exists(), 'release')
                         if fault == 'stale':
                             data = data.replace(generation.encode(), (directory / 'previous').read_bytes(), 1)
-                        if fault == 'hold' and fds:
+                        if fault in ('hold', 'cancel-transfer') and fds:
                             with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as holder:
                                 holder.connect(str(directory / 'hold.socket'))
                                 send(holder, b'H', fds)
+                            if fault == 'cancel-transfer':
+                                assert mgr.recv(1) == b'Q'
+                                send(mgr, data, fds)
+                                return
                     send(mgr, data, fds)
         finally:
             channel.close()
@@ -237,23 +241,32 @@ def exercise(binary, results):
             wait_failed('recreated-target')
             ctl('reset-failed', CHILD)
 
-            action('hold')
             with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as holder:
                 holder.bind(str(d / 'hold.socket'))
                 holder.settimeout(12)
-                start()
-                _, fds = packet(holder)
-                assert len(fds) == 1
-                try:
-                    wait_for(lambda: state(CHILD) == 'active', 'restarted scheduler')
-                    owned = link_id(fds[0])
-                    pids = [int(p) for p in (d / 'child.pid').read_text().split()]
-                    ctl('stop', CHILD)
-                    assert not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
-                    assert all(not Path(f'/proc/{pid}').exists() for pid in pids)
-                    results.append(dict(case='owned-stop-with-duplicate', link=owned, reaped=pids))
-                finally:
-                    os.close(fds[0])
+                for fault in ('hold', 'cancel-transfer'):
+                    action(fault)
+                    start()
+                    _, fds = packet(holder)
+                    assert len(fds) == 1
+                    try:
+                        if fault == 'hold':
+                            wait_for(lambda: state(CHILD) == 'active', 'restarted scheduler')
+                        else:
+                            assert state(CHILD) == 'activating'
+                        owned = link_id(fds[0])
+                        pids = [int(p) for p in (d / 'child.pid').read_text().split()]
+                        ctl('stop', CHILD)
+                        assert not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
+                        assert all(not Path(f'/proc/{pid}').exists() for pid in pids)
+                        case = 'owned-stop-with-duplicate' if fault == 'hold' else 'cancel-in-flight-attachment'
+                        results.append(dict(case=case, link=owned, reaped=pids))
+                        if fault == 'cancel-transfer':
+                            action('normal')
+                            ctl('start', CHILD)
+                            ctl('stop', CHILD)
+                    finally:
+                        os.close(fds[0])
 
             action('normal')
             with foreign(binary) as fd:
