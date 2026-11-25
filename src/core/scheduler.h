@@ -45,17 +45,14 @@ int unit_verify_start_scheduler(Unit *u);
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent);
 int scheduler_bind_parent(Scheduler *s, Unit *parent);
 void scheduler_set_state(Scheduler *s, SchedulerState state);
-typedef struct SchedulerBackend {
-        int (*attach)(Scheduler *s, int target_fd);
-        void (*stop)(Scheduler *s, bool initiate);
-        void (*done)(Scheduler *s);
-        int (*serialize)(Scheduler *s, FILE *f, FDSet *fds);
-        int (*deserialize)(Scheduler *s, const char *key, const char *value, FDSet *fds);
-        int (*coldplug)(Scheduler *s);
-        bool (*is_live)(Scheduler *s);
-        int (*get_effective)(Slice *slice, Unit **ret);
-        void (*sigchld)(Scheduler *s, pid_t pid, int code, int status);
-} SchedulerBackend;
-
-extern const SchedulerBackend scheduler_backend;
 bool scheduler_is_attached(Scheduler *s);
+
+int scheduler_attach(Scheduler *s, int target_fd);
+void scheduler_detach(Scheduler *s, bool initiate);
+bool scheduler_link_is_live(Scheduler *s);
+int slice_get_effective_scheduler(Slice *slice, Unit **ret);
+void scheduler_sigchld(Unit *u, pid_t pid, int code, int status);
+void scheduler_runtime_done(Scheduler *s);
+int scheduler_runtime_serialize(Scheduler *s, FILE *f, FDSet *fds);
+int scheduler_runtime_deserialize(Scheduler *s, const char *key, const char *value, FDSet *fds);
+int scheduler_runtime_coldplug(Scheduler *s);

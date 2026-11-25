@@ -23,13 +23,14 @@
 static char **attempts = NULL;
 static Slice *foreign = NULL;
 
-static int test_attach(Scheduler *s, int target_fd) {
-        Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
+int scheduler_attach(Scheduler *s, int target_fd) {
+        Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = UNIT_DEREF(s->runtime_parent);
         _cleanup_close_ int expected = cg_path_open(ASSERT_PTR(unit_get_cgroup_runtime(target))->cgroup_path);
 
         ASSERT_OK(expected);
         ASSERT_TRUE(fd_inode_same(target_fd, expected));
         ASSERT_EQ(unit_active_state(target), UNIT_ACTIVE);
+        ASSERT_PTR_EQ(parent, unit_get_start_scheduler(u));
         if (parent)
                 ASSERT_EQ(unit_active_state(parent), UNIT_ACTIVE);
 
@@ -43,26 +44,40 @@ static int test_attach(Scheduler *s, int target_fd) {
         return 0;
 }
 
-static void test_stop(Scheduler *s, bool initiate) {
+void scheduler_detach(Scheduler *s, bool initiate) {
         log_info("Detach %s", UNIT(s)->id);
         scheduler_set_state(s, SCHEDULER_DEAD);
 }
 
-static bool test_is_live(Scheduler *s) {
+bool scheduler_link_is_live(Scheduler *s) {
         return unit_active_state(UNIT_DEREF(s->target_slice)) == UNIT_ACTIVE;
 }
 
-static int test_get_effective(Slice *slice, Unit **ret) {
+int slice_get_effective_scheduler(Slice *slice, Unit **ret) {
         *ret = slice == foreign ? NULL : slice_get_configured_scheduler(slice);
         return 0;
 }
 
-const SchedulerBackend scheduler_backend = {
-        .attach = test_attach,
-        .stop = test_stop,
-        .is_live = test_is_live,
-        .get_effective = test_get_effective,
-};
+/* The in-process provider owns no kernel objects or child processes. */
+void scheduler_runtime_done(Scheduler *s) {
+        ASSERT_NULL(s->runtime);
+}
+
+void scheduler_sigchld(Unit *u, pid_t pid, int code, int status) {
+        ASSERT_NULL(SCHEDULER(u)->runtime);
+}
+
+int scheduler_runtime_serialize(Scheduler *s, FILE *f, FDSet *fds) {
+        return 0;
+}
+
+int scheduler_runtime_deserialize(Scheduler *s, const char *key, const char *value, FDSet *fds) {
+        return 0;
+}
+
+int scheduler_runtime_coldplug(Scheduler *s) {
+        return -EOPNOTSUPP;
+}
 
 static void wait_for_unit(Unit *u, UnitActiveState state) {
         usec_t until = now(CLOCK_MONOTONIC) + 15 * USEC_PER_SEC;

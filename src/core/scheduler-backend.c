@@ -54,7 +54,7 @@ static bool backend_owns_node(Scheduler *s, const char *path) {
                 inode_same_at(rt->node, NULL, AT_FDCWD, path, AT_EMPTY_PATH) > 0;
 }
 
-static bool backend_live(Scheduler *s) {
+bool scheduler_link_is_live(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
 
         return rt && rt->node >= 0 && rt->link >= 0 &&
@@ -106,7 +106,7 @@ static int find_scheduler_node(Slice *s, char **node, Slice **owner) {
         return 0;
 }
 
-static int backend_get_effective(Slice *slice, Unit **ret) {
+int slice_get_effective_scheduler(Slice *slice, Unit **ret) {
         _cleanup_free_ char *node = NULL;
         Slice *owner;
         int r;
@@ -132,7 +132,7 @@ static int backend_get_effective(Slice *slice, Unit **ret) {
         return 0;
 }
 
-static void backend_done(Scheduler *s) {
+void scheduler_runtime_done(Scheduler *s) {
         SchedulerRuntime *rt = TAKE_PTR(s->runtime);
 
         if (!rt)
@@ -222,7 +222,7 @@ static void finish_stop(Scheduler *s) {
                 }
         }
 
-        backend_done(s);
+        scheduler_runtime_done(s);
         scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
 }
 
@@ -250,7 +250,7 @@ static void arm_stop_timer(Scheduler *s, bool retry) {
                 stop_timeout(s, r);
 }
 
-static void backend_stop(Scheduler *s, bool initiate) {
+void scheduler_detach(Scheduler *s, bool initiate) {
         SchedulerRuntime *rt = s->runtime;
 
         if (!rt || !initiate)
@@ -271,10 +271,11 @@ static void backend_fail(Scheduler *s, int error, const char *reason) {
         s->result = log_unit_error_errno(UNIT(s), error, "%s: %m", reason);
         (void) strdup_to(&s->failure_reason, reason);
         scheduler_set_state(s, SCHEDULER_DETACHING);
-        backend_stop(s, /* initiate= */ true);
+        scheduler_detach(s, /* initiate= */ true);
 }
 
-static void backend_sigchld(Scheduler *s, pid_t pid, int code, int status) {
+void scheduler_sigchld(Unit *u, pid_t pid, int code, int status) {
+        Scheduler *s = SCHEDULER(u);
         SchedulerRuntime *rt = s->runtime;
 
         if (!rt)
@@ -416,7 +417,7 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
         if (!rt->awaiting_status)
                 return -EBADMSG;
         rt->awaiting_status = false;
-        if (!backend_live(s)) {
+        if (!scheduler_link_is_live(s)) {
                 if (s->state != SCHEDULER_ATTACHED && !rt->reconciling)
                         return -ESTALE;
 
@@ -518,8 +519,8 @@ static int ensure_runtime(Scheduler *s) {
         return 0;
 }
 
-static int backend_attach(Scheduler *s, int target_fd) {
-        Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = unit_get_start_scheduler(u);
+int scheduler_attach(Scheduler *s, int target_fd) {
+        Unit *u = UNIT(s), *target = UNIT_DEREF(s->target_slice), *parent = UNIT_DEREF(s->runtime_parent);
         _cleanup_close_pair_ int pair[2] = EBADF_PAIR;
         _cleanup_free_ char *node_path = NULL, *target_path = NULL;
         struct stat st;
@@ -541,8 +542,6 @@ static int backend_attach(Scheduler *s, int target_fd) {
                 if (asprintf(&node_path, "%s/sub/sub-%" PRIu64, p->runtime->node_path, (uint64_t) st.st_ino) < 0)
                         return -ENOMEM;
         } else {
-                if (!unit_has_name(target, SPECIAL_ROOT_SLICE))
-                        return -ENOLINK;
                 /* A nested manager's root cgroup cannot represent the host attachment. */
                 r = inode_same_at(target_fd, NULL, AT_FDCWD, "/sys/fs/cgroup", AT_EMPTY_PATH);
                 if (r <= 0)
@@ -599,11 +598,11 @@ static int backend_attach(Scheduler *s, int target_fd) {
         return 0;
 
 fail:
-        backend_done(s);
+        scheduler_runtime_done(s);
         return r;
 }
 
-static int backend_serialize(Scheduler *s, FILE *f, FDSet *fds) {
+int scheduler_runtime_serialize(Scheduler *s, FILE *f, FDSet *fds) {
         SchedulerRuntime *rt = s->runtime;
         if (!rt)
                 return 0;
@@ -626,7 +625,7 @@ static int backend_serialize(Scheduler *s, FILE *f, FDSet *fds) {
         return r;
 }
 
-static int backend_deserialize(Scheduler *s, const char *key, const char *value, FDSet *fds) {
+int scheduler_runtime_deserialize(Scheduler *s, const char *key, const char *value, FDSet *fds) {
         if (!startswith(key, "scx-"))
                 return 0;
 
@@ -677,7 +676,7 @@ static int backend_deserialize(Scheduler *s, const char *key, const char *value,
         return *fd < 0 ? *fd : 0;
 }
 
-static int backend_coldplug(Scheduler *s) {
+int scheduler_runtime_coldplug(Scheduler *s) {
         SchedulerRuntime *rt = s->runtime;
         Unit *u = UNIT(s), *parent = UNIT_DEREF(s->runtime_parent);
         struct stat st;
@@ -749,15 +748,3 @@ fail:
         backend_fail(s, r, "Cannot restore scheduler invocation");
         return r;
 }
-
-const SchedulerBackend scheduler_backend = {
-        .serialize = backend_serialize,
-        .deserialize = backend_deserialize,
-        .coldplug = backend_coldplug,
-        .attach = backend_attach,
-        .stop = backend_stop,
-        .is_live = backend_live,
-        .get_effective = backend_get_effective,
-        .done = backend_done,
-        .sigchld = backend_sigchld,
-};

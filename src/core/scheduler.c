@@ -61,7 +61,7 @@ int unit_verify_start_scheduler(Unit *u) {
 
         if (u->type == UNIT_SERVICE) {
                 Unit *effective;
-                r = scheduler_backend.get_effective(SLICE(UNIT_GET_SLICE(u)), &effective);
+                r = slice_get_effective_scheduler(SLICE(UNIT_GET_SLICE(u)), &effective);
                 if (r < 0 || effective != required)
                         return log_unit_notice_errno(u, r < 0 && r != -EAGAIN ? r : SYNTHETIC_ERRNO(ENOLINK),
                                                      "Cannot confirm effective scheduler %s for workload.", required->id);
@@ -119,7 +119,7 @@ void scheduler_set_state(Scheduler *s, SchedulerState state) {
 }
 
 bool scheduler_is_attached(Scheduler *s) {
-        return s->state == SCHEDULER_ATTACHED && scheduler_backend.is_live(s);
+        return s->state == SCHEDULER_ATTACHED && scheduler_link_is_live(s);
 }
 
 static void scheduler_init(Unit *u) {
@@ -133,8 +133,7 @@ static void scheduler_init(Unit *u) {
 static void scheduler_done(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
 
-        if (scheduler_backend.done)
-                scheduler_backend.done(s);
+        scheduler_runtime_done(s);
         s->exec_runtime = exec_runtime_free(s->exec_runtime);
         free(s->failure_reason);
         exec_command_free_list(s->exec_start);
@@ -228,7 +227,8 @@ static int scheduler_start(Unit *u) {
         if (unit_active_state(target) != UNIT_ACTIVE)
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOLINK), "Target slice %s is inactive.", target->id);
 
-        if (!unit_has_name(target, SPECIAL_ROOT_SLICE) && !unit_get_start_scheduler(u))
+        Unit *parent = unit_get_start_scheduler(u);
+        if (!parent && !unit_has_name(target, SPECIAL_ROOT_SLICE))
                 return log_unit_error_errno(u, SYNTHETIC_ERRNO(ENOLINK),
                                             "Target slice %s has no configured parent scheduler.", target->id);
 
@@ -251,10 +251,9 @@ static int scheduler_start(Unit *u) {
         s->result = 0;
         s->failure_reason = mfree(s->failure_reason);
         scheduler_set_state(s, SCHEDULER_ATTACHING);
-        Unit *parent = unit_get_start_scheduler(u);
         r = parent ? scheduler_bind_parent(s, parent) : 0;
         if (r >= 0)
-                r = scheduler_backend.attach(s, fd);
+                r = scheduler_attach(s, fd);
         if (r < 0) {
                 s->result = r;
                 scheduler_set_state(s, SCHEDULER_FAILED);
@@ -271,7 +270,7 @@ static int scheduler_stop(Unit *u) {
                 return 0;
 
         scheduler_set_state(s, SCHEDULER_DETACHING);
-        scheduler_backend.stop(s, /* initiate= */ true);
+        scheduler_detach(s, /* initiate= */ true);
         return 1;
 }
 
@@ -279,12 +278,7 @@ static void scheduler_notify_cgroup_empty(Unit *u) {
         Scheduler *s = SCHEDULER(u);
 
         if (s->state == SCHEDULER_DETACHING)
-                scheduler_backend.stop(s, /* initiate= */ false);
-}
-
-static void scheduler_sigchld(Unit *u, pid_t pid, int code, int status) {
-        if (scheduler_backend.sigchld)
-                scheduler_backend.sigchld(SCHEDULER(u), pid, code, status);
+                scheduler_detach(s, /* initiate= */ false);
 }
 
 static void scheduler_reset_failed(Unit *u) {
@@ -323,7 +317,7 @@ static int scheduler_serialize(Unit *u, FILE *f, FDSet *fds) {
         if (u->start_limit_hit)
                 (void) serialize_bool(f, "scheduler-start-limit-hit", true);
         (void) serialize_item_escaped(f, "scheduler-failure", s->failure_reason);
-        return scheduler_backend.serialize ? scheduler_backend.serialize(s, f, fds) : 0;
+        return scheduler_runtime_serialize(s, f, fds);
 }
 
 static int scheduler_deserialize_item(Unit *u, const char *key, const char *value, FDSet *fds) {
@@ -346,7 +340,7 @@ static int scheduler_deserialize_item(Unit *u, const char *key, const char *valu
         if (streq(key, "scheduler-failure"))
                 return cunescape(value, 0, &s->failure_reason);
 
-        return scheduler_backend.deserialize ? scheduler_backend.deserialize(s, key, value, fds) : 0;
+        return scheduler_runtime_deserialize(s, key, value, fds);
 }
 
 static int scheduler_coldplug(Unit *u) {
@@ -357,9 +351,7 @@ static int scheduler_coldplug(Unit *u) {
                 return 0;
         }
         (void) unit_setup_exec_runtime(u);
-        if (scheduler_backend.coldplug)
-                return scheduler_backend.coldplug(s);
-        return -EOPNOTSUPP;
+        return scheduler_runtime_coldplug(s);
 }
 
 const UnitVTable scheduler_vtable = {

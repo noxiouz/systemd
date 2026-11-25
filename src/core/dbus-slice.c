@@ -63,7 +63,7 @@ static int property_get_slice_scheduler(
                         value = "foreign";
                 else {
                         Unit *effective;
-                        r = scheduler_backend.get_effective(s, &effective);
+                        r = slice_get_effective_scheduler(s, &effective);
                         if (r == -ENOMEM)
                                 return r;
                         value = r < 0 ? "unknown" : effective ? effective->id : "foreign";
