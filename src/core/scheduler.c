@@ -35,11 +35,7 @@ Unit* unit_get_start_scheduler(Unit *u) {
         }
 
         if (u->type == UNIT_SCHEDULER) {
-                Scheduler *s = SCHEDULER(u);
-                if (s->runtime)
-                        return UNIT_DEREF(s->runtime_parent);
-
-                Unit *target = UNIT_DEREF(s->target_slice);
+                Unit *target = UNIT_DEREF(SCHEDULER(u)->target_slice);
                 if (target)
                         return slice_get_configured_scheduler(SLICE(UNIT_GET_SLICE(target)));
         }
@@ -48,23 +44,31 @@ Unit* unit_get_start_scheduler(Unit *u) {
 }
 
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent) {
-        int r;
-
         assert(parent);
 
-        UnitDependencyInfo previous = { .data = hashmap_get(unit_get_dependencies(u, UNIT_AFTER), parent) };
-        if (FLAGS_SET(previous.origin_mask, UNIT_DEPENDENCY_SCHEDULER) &&
-            (u->type != UNIT_SCHEDULER || hashmap_contains(unit_get_dependencies(u, UNIT_PART_OF), parent)))
+        UnitDependencyInfo previous = { .data = hashmap_get(unit_get_dependencies(u, UNIT_WANTS), parent) };
+        if (FLAGS_SET(previous.origin_mask, UNIT_DEPENDENCY_SCHEDULER))
                 return 0;
 
-        /* A reload can change the parent of the next start while the previous attachment remains live.
-         * Keep the old ordering through stop; replace it when admitting the new invocation. */
         unit_remove_dependencies(u, UNIT_DEPENDENCY_SCHEDULER);
-        r = unit_add_two_dependencies(u, UNIT_WANTS, UNIT_AFTER, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
-        if (r < 0 || u->type != UNIT_SCHEDULER)
+        return unit_add_two_dependencies(u, UNIT_AFTER, UNIT_WANTS, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+}
+
+int scheduler_bind_parent(Scheduler *s, Unit *parent) {
+        Unit *u = UNIT(s);
+        int r;
+
+        /* Reload may select a different parent for the next start. Keep the current parent pinned,
+         * and keep its stop ordering and restart propagation until this attachment is gone. */
+        r = unit_add_two_dependencies(u, UNIT_AFTER, UNIT_PART_OF, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
+        if (r < 0)
+                return r;
+        r = unit_add_dependency(u, UNIT_WANTS, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
+        if (r < 0)
                 return r;
 
-        return unit_add_dependency(u, UNIT_PART_OF, parent, /* add_reference= */ false, UNIT_DEPENDENCY_SCHEDULER);
+        unit_ref_set(&s->runtime_parent, u, parent);
+        return 0;
 }
 
 void scheduler_set_state(Scheduler *s, SchedulerState state) {
@@ -76,6 +80,12 @@ void scheduler_set_state(Scheduler *s, SchedulerState state) {
         bus_unit_send_pending_change_signal(UNIT(s), /* including_new= */ false);
         s->state = state;
         unit_notify(UNIT(s), state_translation_table[old], state_translation_table[state], /* reload_success= */ true);
+
+        /* Job completion wakes the previous parent's stop job through the ordering edge. */
+        if (IN_SET(state, SCHEDULER_FAILED, SCHEDULER_DEAD)) {
+                unit_remove_dependencies(UNIT(s), UNIT_DEPENDENCY_SCHEDULER_RUNTIME);
+                unit_ref_unset(&s->runtime_parent);
+        }
 }
 
 bool scheduler_is_attached(Scheduler *s) {
@@ -98,6 +108,7 @@ static void scheduler_done(Unit *u) {
         free(s->failure_reason);
         exec_command_free_list(s->exec_start);
         unit_ref_unset(&s->target_slice);
+        unit_ref_unset(&s->runtime_parent);
 }
 
 static int scheduler_load(Unit *u) {
@@ -209,7 +220,10 @@ static int scheduler_start(Unit *u) {
         s->result = 0;
         s->failure_reason = mfree(s->failure_reason);
         scheduler_set_state(s, SCHEDULER_ATTACHING);
-        r = scheduler_backend.attach(s, fd);
+        Unit *parent = unit_get_start_scheduler(u);
+        r = parent ? scheduler_bind_parent(s, parent) : 0;
+        if (r >= 0)
+                r = scheduler_backend.attach(s, fd);
         if (r < 0) {
                 s->result = r;
                 scheduler_set_state(s, SCHEDULER_FAILED);

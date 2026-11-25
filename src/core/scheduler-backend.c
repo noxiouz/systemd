@@ -64,7 +64,6 @@ static bool backend_live(Scheduler *s) {
 static void backend_done(Scheduler *s) {
         SchedulerRuntime *rt = TAKE_PTR(s->runtime);
 
-        unit_ref_unset(&s->runtime_parent);
         if (!rt)
                 return;
 
@@ -296,7 +295,7 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
                 rt->deadline = MIN(rt->deadline, usec_add(now(CLOCK_MONOTONIC), USEC_PER_SEC));
                 return 0;
         }
-        for (Unit *p = unit_get_start_scheduler(UNIT(s)); p; p = unit_get_start_scheduler(p))
+        for (Unit *p = UNIT_DEREF(s->runtime_parent); p; p = UNIT_DEREF(SCHEDULER(p)->runtime_parent))
                 if (!scheduler_is_attached(SCHEDULER(p))) {
                         /* Coldplug order is independent of hierarchy. A child with healthy
                          * evidence waits for its parent's outstanding confirmation. */
@@ -446,8 +445,6 @@ static int backend_attach(Scheduler *s, int target_fd) {
         rt->target_path = TAKE_PTR(target_path);
         rt->node_path = TAKE_PTR(node_path);
         rt->deadline = usec_add(now(CLOCK_MONOTONIC), s->timeout_usec);
-        if (parent)
-                unit_ref_set(&s->runtime_parent, u, parent);
 
         rt->target = fcntl(target_fd, F_DUPFD_CLOEXEC, 3);
         if (rt->target < 0) {
@@ -575,7 +572,7 @@ static int backend_coldplug(Scheduler *s) {
                         goto fail;
         }
         if (parent) {
-                r = unit_set_scheduler_dependencies(u, parent);
+                r = scheduler_bind_parent(s, parent);
                 if (r < 0)
                         goto fail;
         }

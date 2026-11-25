@@ -204,7 +204,26 @@ def run(binary, rows):
                 (d / 'hold').unlink()
 
             ctl('reset-failed', BUILD)
+            ctl('stop', MID)
+            middle_config = UNITS / GUEST_SLICES[0]
+            middle_config.write_text('[Slice]\nScheduler=\n')
+            ctl('daemon-reload')
             ctl('start', BUILD)
+            assert show(BUILD, 'ParentScheduler') == ROOT
+            old_link = show(BUILD, 'LinkID')
+            middle_config.write_text('[Slice]\nScheduler=scxkeep@.scheduler\n')
+            ctl('daemon-reload')
+            ready([ROOT, BUILD])
+            assert ctl('start', MARK, check=False).returncode != 0 and not marker.exists()
+            assert show(BUILD, 'LinkID') == old_link and show(BUILD, 'ParentScheduler') == ROOT
+            ctl('restart', BUILD)
+            ctl('start', SIDE, MARK)
+            assert show(BUILD, 'ParentScheduler') == MID and show(BUILD, 'LinkID') != old_link
+            assert marker.exists() and workload == int(show(WORK, 'MainPID'))
+            marker.unlink()
+            rows.append(dict(case='reload-intermediate-binding', previous_parent=ROOT, parent=MID,
+                             previous_link=old_link, link=show(BUILD, 'LinkID'), workload_pid=workload))
+
             before = snapshot(d, tree)
             limit = UNITS / f'{BUILD}.d'
             limit.mkdir()

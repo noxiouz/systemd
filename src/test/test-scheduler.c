@@ -15,6 +15,7 @@
 #include "rm-rf.h"
 #include "scheduler.h"
 #include "service.h"
+#include "slice.h"
 #include "stat-util.h"
 #include "strv.h"
 #include "tests.h"
@@ -131,6 +132,14 @@ TEST(scheduler_transactions) {
         check_markers(runtime, "b", true);
         ASSERT_FALSE(unit_is_unneeded(leaf));
         ASSERT_STRV_EQ(attempts, STRV_MAKE("partition@-.scheduler", "partition@lab.scheduler", "batch@lab-build.scheduler"));
+
+        /* Clearing a middle declaration changes the next start. The still-live leaf belongs to the old parent. */
+        Unit *mid_slice = UNIT_DEREF(SCHEDULER(middle)->target_slice);
+        unit_ref_unset(&SLICE(mid_slice)->scheduler);
+        ASSERT_ERROR(unit_start(a, /* details= */ NULL), ENOLINK);
+        ASSERT_PTR_EQ(UNIT_DEREF(SCHEDULER(leaf)->runtime_parent), middle);
+        ASSERT_PTR_EQ(unit_get_start_scheduler(leaf), load(m, "partition@-.scheduler"));
+        unit_ref_set(&SLICE(mid_slice)->scheduler, mid_slice, middle);
 
         /* Explicit stop is independent of an already-admitted workload. Hold a reference to its PID. */
         _cleanup_(pidref_done) PidRef pid = PIDREF_NULL;

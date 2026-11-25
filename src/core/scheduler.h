@@ -41,6 +41,7 @@ DEFINE_CAST(SCHEDULER, Scheduler);
 
 Unit* unit_get_start_scheduler(Unit *u);
 int unit_set_scheduler_dependencies(Unit *u, Unit *parent);
+int scheduler_bind_parent(Scheduler *s, Unit *parent);
 void scheduler_set_state(Scheduler *s, SchedulerState state);
 typedef struct SchedulerBackend {
         int (*attach)(Scheduler *s, int target_fd);

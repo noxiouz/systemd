@@ -22,7 +22,7 @@ static int property_get_scheduler(
                 Unit *target = UNIT_DEREF(s->target_slice);
                 value = target ? target->id : NULL;
         } else if (streq(property, "ParentScheduler")) {
-                Unit *parent = unit_get_start_scheduler(UNIT(s));
+                Unit *parent = s->runtime ? UNIT_DEREF(s->runtime_parent) : unit_get_start_scheduler(UNIT(s));
                 value = parent ? parent->id : NULL;
         } else if (streq(property, "FailureReason"))
                 value = UNIT(s)->start_limit_hit ? "Start request repeated too quickly." :
