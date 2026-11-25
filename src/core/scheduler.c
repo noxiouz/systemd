@@ -77,6 +77,9 @@ void scheduler_set_state(Scheduler *s, SchedulerState state) {
         if (state == old)
                 return;
 
+        if (IN_SET(state, SCHEDULER_DEAD, SCHEDULER_FAILED))
+                s->exec_runtime = exec_runtime_destroy(s->exec_runtime);
+
         bus_unit_send_pending_change_signal(UNIT(s), /* including_new= */ false);
         s->state = state;
         unit_notify(UNIT(s), state_translation_table[old], state_translation_table[state], /* reload_success= */ true);
@@ -105,6 +108,7 @@ static void scheduler_done(Unit *u) {
 
         if (scheduler_backend.done)
                 scheduler_backend.done(s);
+        s->exec_runtime = exec_runtime_free(s->exec_runtime);
         free(s->failure_reason);
         exec_command_free_list(s->exec_start);
         unit_ref_unset(&s->target_slice);
@@ -315,6 +319,7 @@ static int scheduler_coldplug(Unit *u) {
                 scheduler_set_state(s, s->deserialized_state);
                 return 0;
         }
+        (void) unit_setup_exec_runtime(u);
         if (scheduler_backend.coldplug)
                 return scheduler_backend.coldplug(s);
         return -EOPNOTSUPP;
