@@ -28,7 +28,13 @@ EXPECTED = {
     '01': ['supported', 'inconclusive', 'four-attachments-and-inheritance', 'unsupported'],
     '02': ['attachment-identity-and-loss'],
     '03': ['resolver', 'verify-valid', 'wrong', 'missing', 'conflict'],
-    '04': ['activation-transactions', 'native-service-admission'],
+    '04': [
+        'activation-transactions',
+        'native-rejection',
+        'native-root',
+        'native-hierarchy',
+        'native-root-only',
+    ],
     '05': ['mixed-dispatch-inheritance-and-partial'],
     '06': ['native-lifecycle'],
     '07': ['strict-admission'],
@@ -351,15 +357,18 @@ class Replay:
 
         self.guest(positive, *root, 'bash', f'{TEST}/replay/deploy.sh', self.revision)
         self.guest(positive, *root, 'install', '-Dm755', identity, '/usr/local/libexec/scx-test-provider')
-        self.case(
-            '04',
-            'native-service-admission',
-            positive,
-            *root,
-            'bash',
-            f'{BASE}/src/test/units/TEST-99-SCHED-EXT.sh',
-            json_output=False,
-        )
+        native = ['sh', '-ec', f'cd {BASE}/src/test/units; exec ./TEST-99-SCHED-EXT.sh']
+        # Running each required subtest alone makes an unexpected skip fail the reference replay.
+        for subtest in ('rejection', 'root', 'hierarchy'):
+            self.case(
+                '04',
+                f'native-{subtest}',
+                positive,
+                *root,
+                rf'TEST_MATCH_SUBTEST=\.{subtest}\.sh$',
+                *native,
+                json_output=False,
+            )
         for ticket, path, arg in [
             ('06', 'lifecycle.py', identity),
             ('07', 'admission/run.py', MIXED),
@@ -446,6 +455,23 @@ class Replay:
             f'mv /tmp/scx-package.tar {BASE}/package.tar',
         )
         self.guest(negative, *root, 'bash', f'{TEST}/replay/deploy.sh', self.revision)
+        self.guest(
+            negative,
+            *root,
+            'install',
+            '-Dm755',
+            f'/opt/scx-replay/{self.revision}/simple-provider',
+            '/usr/local/libexec/scx-test-provider',
+        )
+        self.case(
+            '04',
+            'native-root-only',
+            negative,
+            *root,
+            r'TEST_MATCH_SUBTEST=\.root-only\.sh$',
+            *native,
+            json_output=False,
+        )
         self.case(
             '01',
             'unsupported',
