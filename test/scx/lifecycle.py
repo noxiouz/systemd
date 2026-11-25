@@ -139,6 +139,16 @@ def link_id(fd):
     return int(fields['link_id'])
 
 
+def manager_pidfds(pid):
+    count = 0
+    for fd in Path('/proc/1/fdinfo').iterdir():
+        try:
+            count += f'Pid:\t{pid}'.encode() in fd.read_bytes().splitlines()
+        except FileNotFoundError:
+            pass
+    return count
+
+
 def exercise(binary, results):
     if os.getuid() != 0 or subprocess.run(['systemd-detect-virt', '--quiet', '--vm']).returncode or \
             not subprocess.run(['systemd-detect-virt', '--quiet', '--container']).returncode:
@@ -194,6 +204,13 @@ def exercise(binary, results):
             assert node().is_dir() and state(ROOT) == 'active' and state(CHILD) == 'activating'
             (d / 'release').touch()
             wait_for(lambda: state(CHILD) == 'active', 'native confirmation')
+            loader = int((d / 'child.pid').read_text().split()[0])
+            retained = manager_pidfds(loader)
+            assert retained > 0
+            for _ in range(2):
+                ctl('daemon-reload')
+                wait_for(lambda: state(CHILD) == 'active', 'restored provider')
+                assert manager_pidfds(loader) == retained
             (d / 'previous').write_bytes((d / 'received').read_bytes())
             results.append(dict(case='delayed-direct-start', target=TARGET.stat().st_ino, kernel_node=node().stat().st_ino))
             ctl('stop', CHILD)

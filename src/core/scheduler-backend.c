@@ -513,9 +513,9 @@ static int backend_deserialize(Scheduler *s, const char *key, const char *value,
                 fd = &rt->node;
         else if (streq(key, "scx-link"))
                 fd = &rt->link;
-        else if (streq(key, "scx-loader"))
+        else if (streq(key, "scx-loader") && !pidref_is_set(&rt->loader))
                 return deserialize_pidref(fds, value, &rt->loader);
-        else if (streq(key, "scx-detacher"))
+        else if (streq(key, "scx-detacher") && !pidref_is_set(&rt->detacher))
                 return deserialize_pidref(fds, value, &rt->detacher);
         else if (streq(key, "scx-target-path"))
                 return strdup_to(&rt->target_path, value);
