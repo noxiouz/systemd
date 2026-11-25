@@ -104,8 +104,6 @@ scx_tree() {
     for slice in scxtest scxtest-build scxtestsibling; do
         cp "$root_dropin" "$units/$slice.slice"
     done
-    # Give the intermediate qmap instance enough CPU for its child.
-    echo CPUWeight=300 >>"$units/scxtest.slice"
     scx_controlled_loader
     systemd-run --unit=scxtest-main --slice=scxtest-build.slice -p Type=exec -p StandardOutput=null yes
     systemd-run --unit=scxtest-side --slice=scxtestsibling.slice -p Type=exec -p StandardOutput=null yes

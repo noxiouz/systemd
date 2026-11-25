@@ -77,11 +77,12 @@ by the integration tests as well.
 `TEST-99-SCHED-EXT` runs the system manager in a disposable VM. Its failing-loader test runs on every
 kernel. The installed test provider probes the running kernel and exercises root-only or hierarchical
 attachments as supported. Build systemd with BPF and install the test binaries in the image for live checks.
-The hierarchy test starts a service on demand, compares its effective scheduler with the kernel's tree,
-and stops the branch.
+The hierarchy cases cover service admission, branch restart, manager reexecution and workload fallback
+when a loader exits. The boot cases reboot with a configured root scheduler and check both successful
+attachment and rejection of the first workload when the loader is missing.
 
 ```sh
-meson test -C build --setup=integration -v TEST-99-SCHED-EXT
+meson test -C build --setup=integration -v TEST-99-SCHED-EXT TEST-99-SCHED-EXT-BOOT TEST-99-SCHED-EXT-BOOT-MISSING
 ```
 
 ## Iterating on an integration test
