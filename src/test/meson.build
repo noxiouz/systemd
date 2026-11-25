@@ -625,7 +625,7 @@ executables += [
 
         test_template + {
                 'sources' : files('test-sched-ext-provider.c'),
-                'dependencies' : have_test_scx ? [libbpf] : [],
+                'dependencies' : have_test_scx ? [libbpf_cflags] : [],
                 'bpf_programs' : ['sched-ext-root', 'sched-ext-child', 'sched-ext-cid'],
                 'type' : 'manual',
         },

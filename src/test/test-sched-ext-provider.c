@@ -11,7 +11,9 @@
 #include <sys/stat.h>
 
 #include "alloc-util.h"
+#include "dlfcn-util.h"
 #include "iovec-util.h"
+#include "log.h"
 #include "parse-util.h"
 #include "sched-ext-child.bpf.skel.h"
 #include "sched-ext-cid.bpf.skel.h"
@@ -20,9 +22,23 @@
 #include "socket-util.h"
 #include "string-util.h"
 
-DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct bpf_object*, bpf_object__close, NULL);
-DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct bpf_link*, bpf_link__destroy, NULL);
-DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct btf*, btf__free, NULL);
+static DLSYM_PROTOTYPE(bpf_link__destroy) = NULL;
+static DLSYM_PROTOTYPE(bpf_link__fd) = NULL;
+static DLSYM_PROTOTYPE(bpf_map__attach_struct_ops) = NULL;
+static DLSYM_PROTOTYPE(bpf_map__fd) = NULL;
+static DLSYM_PROTOTYPE(bpf_map__initial_value) = NULL;
+static DLSYM_PROTOTYPE(bpf_map_lookup_elem) = NULL;
+static DLSYM_PROTOTYPE(bpf_object__close) = NULL;
+static DLSYM_PROTOTYPE(bpf_object__find_map_by_name) = NULL;
+static DLSYM_PROTOTYPE(bpf_object__load) = NULL;
+static DLSYM_PROTOTYPE(bpf_object__open_mem) = NULL;
+static DLSYM_PROTOTYPE(btf__find_by_name_kind) = NULL;
+static DLSYM_PROTOTYPE(btf__free) = NULL;
+static DLSYM_PROTOTYPE(btf__load_vmlinux_btf) = NULL;
+
+DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct bpf_object*, sym_bpf_object__close, NULL);
+DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct bpf_link*, sym_bpf_link__destroy, NULL);
+DEFINE_TRIVIAL_CLEANUP_FUNC_FULL(struct btf*, sym_btf__free, NULL);
 
 static int serve(const char *invocation, uint64_t target, int link, int record) {
         const char *event = "attach";
@@ -30,7 +46,7 @@ static int serve(const char *invocation, uint64_t target, int link, int record) 
 
         for (;;) {
                 struct scx_test_exit status;
-                if (bpf_map_lookup_elem(record, &(uint32_t){}, &status) < 0)
+                if (sym_bpf_map_lookup_elem(record, &(uint32_t){}, &status) < 0)
                         return -errno;
 
                 if (!sent_exit && status.kind != 0 && !streq_ptr(event, "attach"))
@@ -73,11 +89,32 @@ static int run(int argc, char **argv) {
         if (access("/sys/kernel/sched_ext/state", F_OK) < 0)
                 return errno == ENOENT ? log_tests_skipped("kernel lacks sched_ext") : -errno;
 
-        _cleanup_(btf__freep) struct btf *btf = btf__load_vmlinux_btf();
+        _cleanup_(dlclosep) void *dl = NULL;
+        int r = dlopen_many_sym_or_warn(
+                        &dl, "libbpf.so.1", LOG_DEBUG,
+                        DLSYM_ARG(bpf_link__destroy),
+                        DLSYM_ARG(bpf_link__fd),
+                        DLSYM_ARG(bpf_map__attach_struct_ops),
+                        DLSYM_ARG(bpf_map__fd),
+                        DLSYM_ARG(bpf_map__initial_value),
+                        DLSYM_ARG(bpf_map_lookup_elem),
+                        DLSYM_ARG(bpf_object__close),
+                        DLSYM_ARG(bpf_object__find_map_by_name),
+                        DLSYM_ARG(bpf_object__load),
+                        DLSYM_ARG(bpf_object__open_mem),
+                        DLSYM_ARG(btf__find_by_name_kind),
+                        DLSYM_ARG(btf__free),
+                        DLSYM_ARG(btf__load_vmlinux_btf));
+        if (r == -EOPNOTSUPP)
+                return log_tests_skipped("libbpf.so.1 unavailable");
+        if (r < 0)
+                return r;
+
+        _cleanup_(sym_btf__freep) struct btf *btf = sym_btf__load_vmlinux_btf();
         if (!btf)
                 return errno == ENOENT ? log_tests_skipped("kernel BTF unavailable") : -errno;
 
-        bool hierarchy = btf__find_by_name_kind(btf, "scx_bpf_sub_dispatch", BTF_KIND_FUNC) > 0;
+        bool hierarchy = sym_btf__find_by_name_kind(btf, "scx_bpf_sub_dispatch", BTF_KIND_FUNC) > 0;
         if (argc == 2 && streq(argv[1], "--probe"))
                 return 0;
         if (argc == 2 && streq(argv[1], "--probe-hierarchy"))
@@ -100,34 +137,34 @@ static int run(int argc, char **argv) {
         const void *elf;
         if (!hierarchy)
                 elf = sched_ext_root_bpf__elf_bytes(&size);
-        else if (btf__find_by_name_kind(btf, "sched_ext_ops_cid", BTF_KIND_STRUCT) > 0)
+        else if (sym_btf__find_by_name_kind(btf, "sched_ext_ops_cid", BTF_KIND_STRUCT) > 0)
                 elf = sched_ext_cid_bpf__elf_bytes(&size);
         else
                 elf = sched_ext_child_bpf__elf_bytes(&size);
-        _cleanup_(bpf_object__closep) struct bpf_object *obj = bpf_object__open_mem(elf, size, NULL);
+        _cleanup_(sym_bpf_object__closep) struct bpf_object *obj = sym_bpf_object__open_mem(elf, size, NULL);
         if (!obj)
                 return -errno;
 
-        struct bpf_map *ops = bpf_object__find_map_by_name(obj, "ops"),
-                       *record = bpf_object__find_map_by_name(obj, "exit_record");
+        struct bpf_map *ops = sym_bpf_object__find_map_by_name(obj, "ops"),
+                       *record = sym_bpf_object__find_map_by_name(obj, "exit_record");
         if (!ops || !record)
                 return -EBADMSG;
         if (child) {
                 /* sub_cgroup_id is the first field in both of our hierarchy objects. libbpf relocates it
                  * into the running kernel's struct_ops layout on load. */
-                uint64_t *target = bpf_map__initial_value(ops, &size);
+                uint64_t *target = sym_bpf_map__initial_value(ops, &size);
                 if (!target || size < sizeof(*target))
                         return -EINVAL;
                 *target = st.st_ino;
         }
-        int r = bpf_object__load(obj);
+        r = sym_bpf_object__load(obj);
         if (r < 0)
                 return r;
 
-        _cleanup_(bpf_link__destroyp) struct bpf_link *link = bpf_map__attach_struct_ops(ops);
+        _cleanup_(sym_bpf_link__destroyp) struct bpf_link *link = sym_bpf_map__attach_struct_ops(ops);
         if (!link)
                 return -errno;
-        return serve(argv[1], st.st_ino, bpf_link__fd(link), bpf_map__fd(record));
+        return serve(argv[1], st.st_ino, sym_bpf_link__fd(link), sym_bpf_map__fd(record));
 }
 #endif
 
