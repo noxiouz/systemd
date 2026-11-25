@@ -241,8 +241,15 @@ static int scheduler_stop(Unit *u) {
         Scheduler *s = ASSERT_PTR(SCHEDULER(u));
 
         scheduler_set_state(s, SCHEDULER_DETACHING);
-        scheduler_backend.stop(s);
+        scheduler_backend.stop(s, /* initiate= */ true);
         return 1;
+}
+
+static void scheduler_notify_cgroup_empty(Unit *u) {
+        Scheduler *s = SCHEDULER(u);
+
+        if (s->state == SCHEDULER_DETACHING)
+                scheduler_backend.stop(s, /* initiate= */ false);
 }
 
 static void scheduler_sigchld(Unit *u, pid_t pid, int code, int status) {
@@ -328,11 +335,13 @@ static int scheduler_coldplug(Unit *u) {
 const UnitVTable scheduler_vtable = {
         .object_size = sizeof(Scheduler),
         .exec_context_offset = offsetof(Scheduler, exec_context),
+        .kill_context_offset = offsetof(Scheduler, kill_context),
         .cgroup_context_offset = offsetof(Scheduler, cgroup_context),
         .exec_runtime_offset = offsetof(Scheduler, exec_runtime),
         .cgroup_runtime_offset = offsetof(Scheduler, cgroup_runtime),
         .init = scheduler_init,
         .sigchld_event = scheduler_sigchld,
+        .notify_cgroup_empty = scheduler_notify_cgroup_empty,
         .reset_failed = scheduler_reset_failed,
         .sections = "Unit\0" "Scheduler\0" "Install\0",
         .done = scheduler_done,

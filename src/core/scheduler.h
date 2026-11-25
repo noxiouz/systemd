@@ -29,6 +29,7 @@ typedef struct Scheduler {
         char *failure_reason;
 
         ExecContext exec_context;
+        KillContext kill_context;
         CGroupContext cgroup_context;
         ExecRuntime *exec_runtime;
         CGroupRuntime *cgroup_runtime;
@@ -45,7 +46,7 @@ int scheduler_bind_parent(Scheduler *s, Unit *parent);
 void scheduler_set_state(Scheduler *s, SchedulerState state);
 typedef struct SchedulerBackend {
         int (*attach)(Scheduler *s, int target_fd);
-        void (*stop)(Scheduler *s);
+        void (*stop)(Scheduler *s, bool initiate);
         void (*done)(Scheduler *s);
         int (*serialize)(Scheduler *s, FILE *f, FDSet *fds);
         int (*deserialize)(Scheduler *s, const char *key, const char *value, FDSet *fds);

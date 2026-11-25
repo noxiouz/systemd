@@ -72,7 +72,11 @@ def proxy(binary, directory, generation, fd, role):
         stack.enter_context(child)
         proc = subprocess.Popen([binary, generation, str(target_fd), role], stdin=child, pass_fds=(target_fd,))
         child.close()
-        (directory / f'{role}.pid').write_text(f'{os.getpid()} {proc.pid}')
+        pids = [os.getpid(), proc.pid]
+        if fault == 'hold':
+            worker = subprocess.Popen(['sleep', 'infinity'], stdin=subprocess.DEVNULL)
+            pids.append(worker.pid)
+        (directory / f'{role}.pid').write_text(' '.join(map(str, pids)))
         try:
             while True:
                 ready, _, _ = select.select([mgr, channel], [], [], 5)
@@ -258,7 +262,7 @@ def exercise(binary, results):
                         pids = [int(p) for p in (d / 'child.pid').read_text().split()]
                         ctl('stop', CHILD)
                         assert not node().exists() and link_id(fds[0]) == owned and state(CHILD) == 'inactive'
-                        assert all(not Path(f'/proc/{pid}').exists() for pid in pids)
+                        wait_for(lambda: all(not Path(f'/proc/{pid}').exists() for pid in pids), 'reaped provider workers')
                         case = 'owned-stop-with-duplicate' if fault == 'hold' else 'cancel-in-flight-attachment'
                         results.append(dict(case=case, link=owned, reaped=pids))
                         if fault == 'cancel-transfer':

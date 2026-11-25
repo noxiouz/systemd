@@ -119,6 +119,15 @@ static void finish_stop(Scheduler *s) {
                 if (pidref_is_set(&rt->loader) || pidref_is_set(&rt->detacher))
                         return;
 
+                if (unit_cgroup_is_empty(UNIT(s)) == 0) {
+                        /* The loader has exited. Reap any remaining workers before allowing the
+                         * next invocation to reuse this cgroup. The detach helper runs outside it. */
+                        int r = unit_kill_context(UNIT(s), KILL_KILL);
+                        if (r < 0)
+                                s->result = log_unit_error_errno(UNIT(s), r, "Failed to kill scheduler workers: %m");
+                        return; /* The cgroup empty notification will resume teardown. */
+                }
+
                 if (rt->channel >= 0) {
                         /* The provider has exited. Its first packet may still carry our link, even
                          * when stop or SIGCHLD was dispatched before the attach notification. */
@@ -138,11 +147,11 @@ static void finish_stop(Scheduler *s) {
         scheduler_set_state(s, s->result < 0 ? SCHEDULER_FAILED : SCHEDULER_DEAD);
 }
 
-static void backend_stop(Scheduler *s) {
+static void backend_stop(Scheduler *s, bool initiate) {
         SchedulerRuntime *rt = s->runtime;
         int r;
 
-        if (!rt)
+        if (!rt || !initiate)
                 return finish_stop(s);
 
         rt->io = sd_event_source_disable_unref(rt->io);
@@ -156,7 +165,7 @@ static void backend_stop(Scheduler *s) {
                 rt->deadline = usec_add(now(CLOCK_MONOTONIC), UNIT(s)->manager->defaults.timeout_stop_usec);
                 r = unit_arm_timer(UNIT(s), &rt->timer, /* relative= */ false, rt->deadline, dispatch_timer);
                 if (r < 0)
-                        (void) pidref_kill(&rt->loader, SIGKILL);
+                        (void) unit_kill_context(UNIT(s), KILL_KILL);
         }
         finish_stop(s);
 }
@@ -165,7 +174,7 @@ static void backend_fail(Scheduler *s, int error, const char *reason) {
         s->result = log_unit_error_errno(UNIT(s), error, "%s: %m", reason);
         (void) strdup_to(&s->failure_reason, reason);
         scheduler_set_state(s, SCHEDULER_DETACHING);
-        backend_stop(s);
+        backend_stop(s, /* initiate= */ true);
 }
 
 static void backend_sigchld(Scheduler *s, pid_t pid, int code, int status) {
@@ -206,8 +215,7 @@ static int dispatch_timer(sd_event_source *source, usec_t usec, void *userdata) 
         int r;
 
         if (s->state == SCHEDULER_DETACHING) {
-                if (pidref_is_set(&rt->loader))
-                        (void) pidref_kill(&rt->loader, SIGKILL);
+                (void) unit_kill_context(UNIT(s), KILL_KILL);
                 return 0;
         }
 

@@ -42,7 +42,7 @@ static int test_attach(Scheduler *s, int target_fd) {
         return 0;
 }
 
-static void test_stop(Scheduler *s) {
+static void test_stop(Scheduler *s, bool initiate) {
         log_info("Detach %s", UNIT(s)->id);
         scheduler_set_state(s, SCHEDULER_DEAD);
 }
