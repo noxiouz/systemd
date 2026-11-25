@@ -1,7 +1,7 @@
 # Reproducing the scheduler-unit prototype
 
-On an arm64 Linux host, check out the immutable prototype revision identified
-in the [ticket and replay record](https://chatgpt.com/space/page_7b70d4decde88191889b2642766a470b).
+Run from a clean checkout of the revision under test on an arm64 Linux host.
+The full replay and the three preflight commands below use the fixtures in that checkout.
 
 The host needs access to KVM, eight virtual CPUs, at least 8 GiB RAM and 40 GiB
 free disk space in `/var/tmp`. Install Git, Python 3, OpenSSH, cpio, QEMU with
@@ -15,13 +15,28 @@ checkout. Choose an empty output directory outside the checkout.
 python3 test/scx/run-prototype.py ../scheduler-evidence
 ```
 
-The command creates an isolated Lima home, builds systemd and the three
+To run only the kernel probe and hierarchy, the provider identity matrix, or the mixed scheduler
+experiment in one guest, pass `--preflight kernel`, `--preflight identity` or `--preflight mixed`.
+Each uses the same build recipe and writes its results in the output directory.
+
+The full replay creates an isolated Lima home, builds systemd and the three
 cooperative providers in the Debian guest, and installs the tested manager and
-executor as guest PID 1. It runs the userspace tests, boots four two-vCPU QEMU disk overlays
+executor as guest PID 1. It installs the cooperative provider and runs TEST-99, including successful root and child attachments.
+It also runs the userspace tests, boots four two-vCPU QEMU disk overlays
 and installs the same userspace build in the Fedora control guest. Each guest
 uses its own distribution kernel and configuration. The recovery case adds its
 distribution shell to the userspace initrd. The run removes its VMs and retains
 the evidence directory.
+
+To run TEST-99 separately, build the cooperative qmap fixture from this checkout and an upstream qmap build.
+On the reference guest, the following commands require Linux v7.3 sources at `$linux`:
+
+```sh
+make -C "$linux/tools/sched_ext" CLANG=clang-23 scx_qmap
+meson setup /tmp/scx-provider test/scx/identity -Dlinux-source="$linux" -Dqmap-build="$linux/tools/sched_ext/build"
+meson compile -C /tmp/scx-provider identity-provider
+sudo install -D /tmp/scx-provider/identity-provider /usr/local/libexec/scx-test-provider
+```
 
 | Input | Reference |
 | --- | --- |
@@ -31,11 +46,16 @@ the evidence directory.
 | Cooperative providers and per-task observers | [Build definitions](identity/meson.build), [protocol and dispatch evidence](identity/README.md) |
 | Distribution build dependencies | [Pinned Debian package snapshot and build commands](replay/build.sh) |
 
-## Results
+## Historical prototype results
+
+To reproduce the original matrix and observations, use a separate checkout of
+[`e66be7c60a`](https://github.com/noxiouz/systemd/tree/e66be7c60adf44087faaaa7e81368845ce88df53/test/scx)
+and its `python3 test/scx/run-prototype.py ../historical-evidence` command. Its standalone
+preflight entrypoint was `test/scx/run-reference.sh` with no arguments, `--identity` or `--mixed`.
 
 The clean Linux run before this report was added recorded the test matrix,
 kernel attachments, per-task dispatch counts, fallback states and boot
-observations. [Prerelease results](replay/reference.json)
+observations. [Archived run](https://github.com/noxiouz/systemd/blob/e66be7c60adf44087faaaa7e81368845ce88df53/test/scx/replay/reference.json)
 
 `manifest.json` gives the Git revision and tree, provider revision, named results,
 and SHA-256 of every evidence file. `commands.log` contains the full build and

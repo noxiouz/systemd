@@ -1,0 +1,16 @@
+{
+  "hierarchical": {
+    "kernel": "7.3.5+deb14-cloud-arm64",
+    "image_sha256": "2203f7dab8af7c7e82ff7a3b2e6c3a2ce7a48444db3d56679965fde7c303cdf5",
+    "kernel_sha256": "7ae647d15b45d269fa4244b0af7b6a560ae3ba321587d2d01692ddefa4bc2b0c",
+    "kernel_config_sha256": "45d5b0e005ef386b3d2baef4dc41c6e9dfc0f4f9950e05450f81d4a1fbc9081d",
+    "btf_sha256": "6a35a446f36cbc1faf6b8ee4c63d2726768f7f9cc35b8097d936e87ca481df7c"
+  },
+  "root_only": {
+    "kernel": "6.19.10-300.fc44.aarch64",
+    "image_sha256": "55c60a3b80d3616a08705afd0459e75fe9f03c54aba7a46e4002a41a72fa0d5b",
+    "kernel_sha256": "e55a5f9a9177267f58d1e957f58e6b294a4552cfe7cdf72174e686edd6b474da",
+    "kernel_config_sha256": "044be830f7df5cb19c1b38ea42383e1a770b3722efb2b375cc86ac2efcfb2530",
+    "btf_sha256": "cb0803f3e79f65220a56d1633a4328b9092c50cfd0009eb7357f80f84bddad06"
+  }
+}

@@ -1,14 +1,14 @@
 # Scheduler attachment identity
 
-Run `test/scx/run-reference.sh --identity >scx-identity.json` on an arm64 host with Lima.
+Run `python3 test/scx/run-prototype.py --preflight identity ../identity-evidence` on an arm64 host with Lima.
 The launcher boots the pinned Linux 7.3.5 Debian image, builds the upstream qmap BPF
 skeleton and a cooperative userspace loader, runs the matrix as root inside the VM, and deletes
-the guest. [reference.json](reference.json) records one successful run. Cgroup IDs, link IDs,
+the guest. [The archived fixture report](https://github.com/noxiouz/systemd/blob/e66be7c60adf44087faaaa7e81368845ce88df53/test/scx/identity/reference.json) records one successful run. Cgroup IDs, link IDs,
 kernel directory inodes and invocation IDs are allocated for each run.
 
 ## Mixed providers and task dispatch
 
-Run `test/scx/run-reference.sh --mixed >scx-dispatch.json` to exercise qmap at the
+Run `python3 test/scx/run-prototype.py --preflight mixed ../mixed-evidence` to exercise qmap at the
 root, intermediate slice and sibling, with a separate single-queue FIFO policy at
 the grandchild. Both loaders use the same per-invocation protocol. The report
 records each provider's source, algorithm, roles, required features and build
@@ -55,23 +55,4 @@ experimental ownership model.
 All 17 expected decisions matched. Testing only for an open link and a living loader would
 have reported seven false positives in this matrix.
 
-## Experimental private wire format
-
-The fixture receives three arguments: the lowercase hexadecimal invocation ID, the number of
-the inherited cgroup FD, and `root` or `child`. The test-only `flat` mode supplies a root without
-a delegation callback. Standard input is the bidirectional connected socket. Each packet contains
-one record, without a trailing newline or NUL.
-
-```text
-event invocation target-inode attach-errno exit-kind exit-code message
-```
-
-The provider sends `attach` once, with one `SCM_RIGHTS` struct-ops link on successful registration.
-A single-byte `S` request returns `status`. An unsolicited `exit` is a hint to query again. The
-remaining message field may contain spaces and may be empty. A single-byte `Q` or peer closure
-stops the loader. The manager can explicitly detach its own link before releasing its references.
-
-The upstream kernel publishes a child's sysfs node before calling its parent's `sub_attach`.
-Some late failures invoke the child's `ops.exit` and return a successful struct-ops registration.
-The kernel's struct-ops detach operation unregisters an explicitly identified link even while
-other descriptors refer to it. [Linux v7.3 child enable](https://github.com/torvalds/linux/blob/v7.3/kernel/sched/ext/sub.c#L1663-L1883) · [struct-ops link detach](https://github.com/torvalds/linux/blob/v7.3/kernel/bpf/bpf_struct_ops.c#L1388-L1415)
+See `systemd.scheduler(5)` for the provider protocol.

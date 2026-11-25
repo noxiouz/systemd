@@ -3,7 +3,7 @@
 Run these fixtures on disposable arm64 VMs. Both the Debian positive image and the
 Fedora root-only control boot their distribution kernels. Each image digest,
 kernel digest, configuration digest, and observed BTF capability is in the
-[reference report](reference.json).
+[reference report](https://github.com/noxiouz/systemd/blob/e66be7c60adf44087faaaa7e81368845ce88df53/test/scx/boot/reference.json).
 
 ## Debian cold boot
 

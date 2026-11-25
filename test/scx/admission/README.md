@@ -32,4 +32,4 @@ confirm zero condition, pre-start and main commands, then verify a fresh start a
 fault. The final case detaches the already-admitted workload's scheduler, verifies that its PID
 survives, and traces a new workload executing through the restored chain.
 
-[Reference run](reference.json)
+[Reference run](https://github.com/noxiouz/systemd/blob/e66be7c60adf44087faaaa7e81368845ce88df53/test/scx/admission/reference.json)
