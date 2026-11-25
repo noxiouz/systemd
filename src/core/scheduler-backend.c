@@ -68,6 +68,9 @@ static int find_scheduler_node(Slice *s, char **node, Slice **owner) {
         Unit *u = UNIT(s), *parent = UNIT_GET_SLICE(u);
         int r;
 
+        assert(node);
+        assert(owner);
+
         if (parent) {
                 r = find_scheduler_node(SLICE(parent), node, owner);
                 if (r < 0)
@@ -109,6 +112,8 @@ int slice_get_effective_scheduler(Slice *slice, Unit **ret) {
         _cleanup_free_ char *node = NULL;
         Slice *owner;
         int r;
+
+        assert(ret);
 
         r = find_scheduler_node(slice, &node, &owner);
         if (r < 0)
@@ -369,6 +374,8 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
         int err, exit_kind, r;
         uint64_t target_id;
         int64_t exit_code;
+
+        assert(link);
 
         r = extract_many_words(&packet, " ", EXTRACT_DONT_COALESCE_SEPARATORS|EXTRACT_RETAIN_ESCAPE,
                                &event, &generation, &target, &error, &kind, &code);
