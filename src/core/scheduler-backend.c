@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <linux/bpf.h>
 #include <sys/syscall.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include "sd-event.h"
@@ -14,12 +13,11 @@
 #include "extract-word.h"
 #include "fd-util.h"
 #include "fileio.h"
-#include "format-util.h"
+#include "fs-util.h"
 #include "iovec-util.h"
 #include "job.h"
 #include "manager.h"
 #include "parse-util.h"
-#include "path-util.h"
 #include "pidref.h"
 #include "scheduler.h"
 #include "serialize.h"
@@ -27,6 +25,7 @@
 #include "socket-util.h"
 #include "special.h"
 #include "stat-util.h"
+#include "stdio-util.h"
 #include "string-util.h"
 #include "strv.h"
 #include "virt.h"
@@ -405,9 +404,9 @@ static int process_packet(Scheduler *s, const char *packet, int *link) {
         }
 
         if (streq(event, "attach")) {
-                rt->node = open(rt->node_path, O_PATH|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW);
+                rt->node = xopenat(AT_FDCWD, rt->node_path, O_PATH|O_DIRECTORY|O_NOFOLLOW);
                 if (rt->node < 0)
-                        return -errno;
+                        return rt->node;
 
                 /* A directory may have appeared during a subsequently vetoed attachment. Ask the
                  * provider for the durable exit record after it has returned its actual link. */

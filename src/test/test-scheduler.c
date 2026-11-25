@@ -209,7 +209,7 @@ TEST(scheduler_transactions) {
 
         /* Even a broken slice scheduler must allow an action-only service to complete its transition. */
         Unit *action = load(m, "action-only.service");
-        ASSERT_OK(manager_add_job(m, JOB_START, action, JOB_REPLACE, /* error= */ NULL, /* ret= */ NULL));
+        ASSERT_OK(manager_add_job(m, JOB_START, action, JOB_REPLACE, /* reterr_error= */ NULL, /* ret= */ NULL));
         wait_for_unit(action, UNIT_ACTIVE);
 
         Unit *cycle = load(m, "fault@cycle.service");

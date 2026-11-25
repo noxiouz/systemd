@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
-#include "bus-get-properties.h"
+#include "sd-bus.h"
+
 #include "dbus-scheduler.h"
 #include "errno-util.h"
 #include "scheduler.h"

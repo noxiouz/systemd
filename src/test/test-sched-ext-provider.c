@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 
 #include "alloc-util.h"
-#include "errno-util.h"
 #include "iovec-util.h"
 #include "parse-util.h"
 #include "sched-ext-child.bpf.skel.h"
