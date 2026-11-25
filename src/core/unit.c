@@ -3897,8 +3897,16 @@ int unit_coldplug(Unit *u) {
 
         if (u->job && IN_SET(u->job->type, JOB_START, JOB_RESTART)) {
                 Unit *scheduler = unit_get_start_scheduler(u);
-                if (scheduler)
+                if (scheduler) {
                         RET_GATHER(r, unit_set_scheduler_dependencies(u, scheduler));
+
+                        /* A previously active scheduler may have completed its job before serialization.
+                         * Its restored attachment needs fresh confirmation before a queued start can run. */
+                        if (!scheduler->job &&
+                            SCHEDULER(scheduler)->deserialized_state == SCHEDULER_ATTACHED)
+                                RET_GATHER(r, manager_add_job(u->manager, JOB_VERIFY_ACTIVE, scheduler, JOB_FAIL,
+                                                              /* reterr_error= */ NULL, /* ret= */ NULL));
+                }
         }
         if (u->job)
                 RET_GATHER(r, job_coldplug(u->job));

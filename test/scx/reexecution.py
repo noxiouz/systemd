@@ -6,6 +6,7 @@
 import ctypes
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -104,7 +105,10 @@ def run(binary, rows):
         for name in GUEST_SLICES[:3]:
             config(UNITS / name, '[Slice]\nScheduler=scxkeep@.scheduler\n')
         config(UNITS / WORK, '[Service]\nSlice=scxkeep-build-ci.slice\nExecStart=/usr/bin/sleep infinity\n')
-        config(UNITS / MARK, f'[Service]\nSlice=scxkeep-build-ci.slice\nType=oneshot\nExecStart=/usr/bin/touch {marker}\n')
+        blocker = 'scxkeep-block.service'
+        hold_job = d / 'hold-job'
+        config(UNITS / blocker, f"[Service]\nType=oneshot\nExecStart=/bin/sh -c 'while test -e {hold_job}; do sleep .02; done'\n")
+        config(UNITS / MARK, f'[Unit]\nRequires={blocker}\nAfter={blocker}\n\n[Service]\nSlice=scxkeep-build-ci.slice\nType=oneshot\nExecStart=/usr/bin/touch {marker}\n')
         since = time.time()
         try:
             ctl('daemon-reload')
@@ -119,6 +123,26 @@ def run(binary, rows):
             assert MID in show(BUILD, 'PartOf').split() and MID in show(SIDE, 'PartOf').split()
             rows.append(dict(case='healthy-reexec', before=before, after=after, workload_pid=workload,
                              launches=len(counts.splitlines())))
+            hold_job.touch()
+            ctl('start', '--no-block', MARK)
+            wait_for(lambda: state(blocker) == 'activating', 'independent ordering blocker')
+            pending_job = job_id(MARK)
+            assert not ctl('list-jobs', '--no-legend', '--plain', BUILD).stdout.strip()
+            provider = before[BUILD]['provider_pid']
+            os.kill(provider, signal.SIGSTOP)
+            try:
+                ctl('daemon-reexec')
+                assert state(BUILD) == 'activating'
+                hold_job.unlink()
+                wait_for(lambda: state(blocker) == 'inactive', 'release independent ordering blocker')
+                assert job_id(MARK) == pending_job and not marker.exists()
+            finally:
+                os.kill(provider, signal.SIGCONT)
+            wait_for(marker.exists, 'queued workload admitted after reconfirmation')
+            assert job_result(MARK, pending_job) == 'done'
+            marker.unlink()
+            rows.append(dict(case='queued-consumer-reexec', job=pending_job, provider_pid=provider))
+
             ctl('restart', MID)
             ready(tree)
             restarted = snapshot(d, tree)
@@ -208,7 +232,8 @@ def run(binary, rows):
             assert len(journal) >= 3, journal
             rows.append(dict(case='journal', reexecutions=journal))
         finally:
-            for unit in [MARK, WORK, NEW, BUILD, SIDE, MID, ROOT, *reversed(GUEST_SLICES)]:
+            hold_job.unlink(missing_ok=True)
+            for unit in [MARK, blocker, WORK, NEW, BUILD, SIDE, MID, ROOT, *reversed(GUEST_SLICES)]:
                 ctl('stop', unit, check=False)
             files.close()
             ctl('daemon-reload')
